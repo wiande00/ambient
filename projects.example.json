@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "key": "website",
+      "name": "Website",
+      "description": "Building and maintaining a personal website: code, copy and design.",
+      "hints": ["website", "portfolio", "localhost:3000"]
+    },
+    {
+      "key": "thesis",
+      "name": "Thesis",
+      "description": "Writing a thesis: reading papers, drafting chapters, notes and references.",
+      "hints": ["thesis", "overleaf", "zotero", "chapter"]
+    },
+    {
+      "key": "course",
+      "name": "Course",
+      "description": "Studying for a course: lectures, labs, reading and exercises.",
+      "hints": ["lecture", "lab", "assignment", "canvas"]
+    }
+  ]
+}

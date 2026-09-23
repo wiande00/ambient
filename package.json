@@ -1,0 +1,51 @@
+{
+  "name": "ambient",
+  "version": "0.8.0",
+  "private": true,
+  "description": "A personal time tracker: where the hours went, from the window that had focus.",
+  "author": "William Andersson",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "next dev",
+    "dev:electron": "concurrently -k -n next,electron \"next dev\" \"npm run electron:attach\"",
+    "electron:attach": "node scripts/run.mjs \"wait-on -t 60000 http-get://127.0.0.1:3000\" \"npm run build:electron\" \"electron .\"",
+    "build:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --external:electron --outdir=dist-electron --out-extension:.js=.cjs",
+    "build:mcp": "esbuild mcp/server.ts --bundle --platform=node --format=cjs --outfile=dist-electron/mcp.cjs",
+    "mcp": "node dist-electron/mcp.cjs",
+    "build": "node scripts/run.mjs \"next build\" \"node scripts/prepare-standalone.mjs\" \"npm run build:electron\" \"npm run build:mcp\"",
+    "icons": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-icons.ps1",
+    "dist": "node scripts/run.mjs \"npm run build\" \"electron-builder --win nsis\"",
+    "publish:local": "node scripts/publish-local.mjs",
+    "release": "node scripts/run.mjs \"npm run dist\" \"node scripts/publish-local.mjs\" \"node scripts/publish-github.mjs\"",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "node scripts/run.mjs \"tsc --noEmit\" \"tsc -p electron/tsconfig.json\" \"tsc -p mcp/tsconfig.json\"",
+    "publish:github": "node scripts/publish-github.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "next": "16.2.12",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^10.0.5",
+    "electron": "^44.1.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "typescript": "^5",
+    "wait-on": "^9.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wiande00/ambient.git"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,15 @@
+:root{
+  /* Generously rounded. 18px is the default radius. */
+  --radius-0:0px;
+  --radius-xs:6px;
+  --radius-sm:10px;
+  --radius-md:18px;
+  --radius-lg:26px;
+  --radius-xl:36px;
+  --radius-pill:999px;
+  --radius-card:var(--radius-md);
+  --radius-card-lg:var(--radius-lg);
+  --radius-control:var(--radius-pill);
+  --radius-field:var(--radius-md);
+  --radius-media:var(--radius-lg);
+}

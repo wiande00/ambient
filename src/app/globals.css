@@ -1,0 +1,225 @@
+@import "../ui/styles.css";
+
+/* Point the type tokens in src/ui at the fonts self-hosted via next/font/google in
+   app/layout.tsx. */
+:root {
+  --font-display: var(--font-manrope), "Helvetica Neue", Helvetica, sans-serif;
+  --font-sans: var(--font-manrope), "Helvetica Neue", Helvetica, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+/* Manrope has no width axis, so the base styles' `font-stretch` on headings would be a
+   silent no-op. Statement type is set by weight and tracking here instead. */
+h1,
+h2,
+h3,
+h4 {
+  font-stretch: normal;
+}
+
+body {
+  min-height: 100vh;
+}
+
+/* The frame around the screens. In a browser tab the app sits on the desk as an object with
+   its own title bar. In the desktop app the window already is that object, so the frame
+   gives way: the page fills the window, its title bar becomes the window's, and only the
+   screens scroll beneath it. `data-shell` is set before the first paint by the script in
+   app/layout.tsx, which is why this lives here rather than inline. */
+
+.ambient-desk {
+  min-height: 100vh;
+  background: var(--surface-page);
+  padding: 28px;
+  display: flex;
+  justify-content: center;
+}
+
+/* Deliberately not clipped. Rounding the frame with `overflow: hidden` would be simpler, but
+   it also cuts off the band's tooltips at the panel edge. The title bar and the sidebar,
+   which carry their own background, round their own outer corners instead, one pixel inside
+   the border, which gets the same frame and lets an overlay float out over the desk the way
+   an overlay should. */
+.ambient-frame {
+  --titlebar-height: 48px;
+  width: 100%;
+  max-width: var(--container-max);
+  background: var(--panel);
+  border: 1px solid var(--border-hairline);
+  border-radius: 24px;
+  box-shadow: var(--sh-1);
+  display: flex;
+  flex-direction: column;
+}
+
+.ambient-titlebar {
+  height: var(--titlebar-height);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px 0 16px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--panel-2);
+  border-radius: 23px 23px 0 0;
+}
+
+.ambient-body {
+  display: flex;
+  flex: 1;
+  min-height: 780px;
+}
+
+.ambient-nav {
+  border-radius: 0 0 0 23px;
+}
+
+[data-shell="desktop"] .ambient-desk {
+  height: 100vh;
+  min-height: 0;
+  padding: 0;
+}
+
+[data-shell="desktop"] .ambient-frame {
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* The window's title bar: it drags the window, and a double-click maximises it. Windows
+   draws the caption buttons over its right end, inside the area the window-controls-overlay
+   variables leave free, so the padding stops the switch from sliding under them. */
+[data-shell="desktop"] .ambient-titlebar {
+  border-radius: 0;
+  -webkit-app-region: drag;
+  padding-right: calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%) + 14px);
+}
+[data-shell="desktop"] .ambient-titlebar button {
+  -webkit-app-region: no-drag;
+}
+
+/* The screens scroll under a title bar and a sidebar that stay put. The sidebar sits inside
+   the scrolling area rather than beside it, so a tooltip near a screen's left edge can still
+   float out over it, as it does over the desk in a browser. */
+[data-shell="desktop"] .ambient-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+[data-shell="desktop"] .ambient-nav {
+  border-radius: 0;
+  position: sticky;
+  top: 0;
+  height: calc(100vh - var(--titlebar-height));
+}
+
+/* Desk shell utilities. Hover and focus need a real stylesheet — the screens are otherwise
+   styled inline, and inline styles cannot express a pseudo-class. */
+
+/* Every label set in small caps: the sidebar headings, the stat captions, the eyebrow over
+   each screen's date. Size and tracking are overridden inline where the design asks. */
+.ambient-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.ambient-nav-item {
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
+.ambient-nav-item:hover:not([aria-current="page"]) {
+  background: var(--rule-2);
+  color: var(--ink-1);
+}
+
+.ambient-step:hover:not(:disabled) {
+  background: var(--nav-on);
+}
+
+.ambient-chip {
+  transition: border-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
+.ambient-chip:hover {
+  border-color: var(--paper-4);
+  color: var(--ink-1);
+}
+
+/* The actions a row of the chunk list carries — edit a chunk, add over a break, restore a
+   removed stretch — stay quiet until the row is under the pointer or holds focus, so a
+   list of chunks and dividers does not read as a list of buttons. The pencil on a card
+   stays faintly visible so it can be found at all. */
+.ambient-row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
+.ambient-card-edit {
+  width: 28px;
+  height: 28px;
+  opacity: 0.45;
+}
+.ambient-row-action-on,
+.ambient-row:hover .ambient-row-action,
+.ambient-row:focus-within .ambient-row-action {
+  opacity: 1;
+}
+.ambient-row-action:hover:not(:disabled) {
+  background: var(--rule-2);
+  color: var(--ink-1);
+}
+.ambient-row-action:focus-visible {
+  outline: 2px solid var(--ink-1);
+  outline-offset: 2px;
+}
+.ambient-row-action:disabled {
+  cursor: progress;
+}
+
+/* "Label now" on an unlabelled card. Always visible, unlike the row actions: it is the
+   thing to do with a card that has nothing else on it. */
+.ambient-label-now {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text-accent);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard);
+}
+.ambient-label-now:hover {
+  border-color: var(--paper-4);
+  background: var(--rule-2);
+}
+.ambient-label-now:focus-visible {
+  outline: 2px solid var(--ink-1);
+  outline-offset: 2px;
+}
+
+/* The band dims every stretch but the one under the pointer, so a single stretch can be
+   picked out of a day without a legend or a click. */
+.ambient-band:hover > * {
+  opacity: 0.45;
+}
+.ambient-band > *:hover {
+  opacity: 1;
+}
+.ambient-band > * {
+  transition: opacity var(--dur-fast) var(--ease-standard);
+}

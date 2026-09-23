@@ -1,0 +1,46 @@
+# Personal, unsigned Windows build. `npm run dist` writes release/Ambient-Setup-<version>.exe.
+appId: com.ronnefalk.ambient
+productName: Ambient
+directories:
+  output: release
+  buildResources: resources
+
+# The main-process bundle is self-contained (esbuild), so app.asar holds two files and the
+# manifest. The Next server travels outside the asar: scripts/after-pack.cjs copies
+# .next/standalone to resources/server (not `app`, which Electron would load as the app
+# itself). It cannot go through extraResources, whose matcher drops node_modules.
+files:
+  - dist-electron/**/*
+  - package.json
+  - "!node_modules/**/*"
+asar: true
+npmRebuild: false
+afterPack: scripts/after-pack.cjs
+
+extraResources:
+  - from: collector/collect.ps1
+    to: collector/collect.ps1
+  - from: resources/tray.png
+    to: tray.png
+  - from: resources/icon.png
+    to: icon.png
+  # The MCP server, run by Ambient.exe in Node mode (ELECTRON_RUN_AS_NODE=1); outside the
+  # asar so a plain Node runtime can load it.
+  - from: dist-electron/mcp.cjs
+    to: mcp/server.cjs
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: resources/icon.png
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  # Per-user install under %LOCALAPPDATA%\Programs\Ambient: no UAC, and the login item
+  # points at a path the user owns.
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false

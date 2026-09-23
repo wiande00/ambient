@@ -1,0 +1,42 @@
+:root{
+  --font-display:Archivo,"Helvetica Neue",Helvetica,sans-serif;
+  --font-sans:"Instrument Sans","Helvetica Neue",Helvetica,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,monospace;
+
+  /* Statement scale. Display sizes are meant to be loud and set tight. */
+  --text-mega:clamp(56px,9vw,132px);
+  --text-hero:clamp(44px,6.5vw,88px);
+  --text-h1:56px;
+  --text-h2:40px;
+  --text-h3:30px;
+  --text-h4:23px;
+  --text-lead:20px;
+  --text-body-lg:18px;
+  --text-body-md:16px;
+  --text-body-sm:14px;
+  --text-caption:13px;
+  --text-micro:11px;
+
+  --leading-tight:0.92;
+  --leading-display:1.0;
+  --leading-snug:1.2;
+  --leading-body:1.55;
+  --leading-loose:1.7;
+
+  --tracking-mega:-0.035em;
+  --tracking-display:-0.025em;
+  --tracking-heading:-0.015em;
+  --tracking-body:0em;
+  --tracking-label:0.08em;
+  --tracking-micro:0.14em;
+
+  --weight-regular:400;
+  --weight-medium:500;
+  --weight-semibold:600;
+  --weight-bold:700;
+  --weight-black:800;
+
+  /* Display width axis: statement type is set slightly condensed. */
+  --width-display:92;
+  --width-normal:100;
+}

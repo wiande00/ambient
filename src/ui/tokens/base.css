@@ -1,0 +1,13 @@
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--surface-page);color:var(--text-body);font-family:var(--font-sans);font-size:var(--text-body-md);line-height:var(--leading-body);-webkit-font-smoothing:antialiased;text-wrap:pretty}
+h1,h2,h3,h4{font-family:var(--font-display);color:var(--text-display);font-weight:var(--weight-black);letter-spacing:var(--tracking-display);line-height:var(--leading-snug);margin:0;font-stretch:92%}
+h1{font-size:var(--text-h1);line-height:var(--leading-display)}
+h2{font-size:var(--text-h2)}
+h3{font-size:var(--text-h3);font-weight:var(--weight-bold)}
+h4{font-size:var(--text-h4);font-weight:var(--weight-bold);letter-spacing:var(--tracking-heading)}
+p{margin:0}
+a{color:var(--text-link);text-decoration-thickness:1px;text-underline-offset:3px;transition:color var(--dur-fast) var(--ease-standard)}
+a:hover{color:var(--text-link-hover)}
+::selection{background:var(--signal-2);color:var(--ink-1)}
+:focus-visible{outline:none;box-shadow:var(--ring-focus)}
+.ui-mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}

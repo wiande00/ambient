@@ -1,0 +1,91 @@
+:root{
+  /* Base neutrals: warm paper to ink. Light-first. */
+  --paper-0:#FFFDFA;
+  --paper-1:#FBF7F1;
+  --paper-2:#F4EEE5;
+  --paper-3:#E9E1D5;
+  --paper-4:#D8CEBE;
+  --ink-1:#14120F;
+  --ink-2:#241F1A;
+  --ink-3:#463F37;
+  --ink-4:#7A7268;
+  --ink-5:#A79E92;
+
+  /* Signal: the single loud accent. Used for primary action and emphasis. */
+  --signal-1:#FFE9DF;
+  --signal-2:#FFB799;
+  --signal-3:#FF5A1F;
+  --signal-4:#E63F00;
+  --signal-5:#8F2800;
+
+  /* Measure: the analytical cool tone, and the system's only chromatic ramp
+     besides signal. Charts, telemetry, progress. */
+  --measure-1:#E1EBF0;
+  --measure-2:#9DB8C7;
+  --measure-2b:#47758F;
+  --measure-3:#013151;
+  --measure-4:#011F34;
+
+  /* Alert / caution. */
+  --alert-1:#FBE6E4;
+  --alert-3:#C0392B;
+  --caution-1:#FCF0D8;
+  --caution-3:#B57F14;
+
+  /* Semantic surfaces */
+  --surface-page:var(--paper-1);
+  --surface-card:var(--paper-0);
+  --surface-sunken:var(--paper-2);
+  --surface-raised:var(--paper-0);
+  --surface-inverse:var(--ink-1);
+  --surface-accent:var(--signal-3);
+  --surface-accent-soft:var(--signal-1);
+  --surface-overlay:rgba(20,18,15,.55);
+
+
+  /* Semantic text */
+  --text-display:var(--ink-1);
+  --text-body:var(--ink-1);
+  --text-muted:var(--ink-2);
+  --text-subtle:var(--ink-3);
+  --text-inverse:var(--paper-0);
+  --text-accent:var(--signal-4);
+  /* The colour statement type takes. Usually the accent, but a theme can split
+     them so display type and UI carry different colours. */
+  --display-accent:var(--signal-3);
+  --text-link:var(--signal-4);
+  --text-link-hover:var(--signal-5);
+
+  /* Semantic borders */
+  --border-hairline:var(--paper-3);
+  --border-strong:var(--ink-1);
+  --border-soft:var(--paper-2);
+  --border-focus:var(--signal-3);
+  --border-inverse:rgba(255,253,250,.18);
+
+  /* Status */
+  --status-positive:var(--measure-3);
+  --status-positive-soft:var(--measure-1);
+  --status-caution:var(--caution-3);
+  --status-caution-soft:var(--caution-1);
+  --status-negative:var(--alert-3);
+  --status-negative-soft:var(--alert-1);
+  --status-info:var(--ink-3);
+  --status-info-soft:var(--paper-2);
+
+
+  /* Data colour follows the buttons: bars, dials and chart series all read from
+     the accent family, so a theme change carries the data with it. */
+  --data-bar:var(--signal-4);
+  --data-track:var(--paper-3);
+
+  /* Chart sequence: one hue, five values, darkest first. Assign in order and
+     never re-order per chart. */
+  --data-1:var(--signal-5);
+  --data-2:var(--signal-4);
+  --data-3:var(--signal-3);
+  --data-4:var(--signal-2);
+  --data-5:var(--signal-1);
+  --data-bar-soft:var(--signal-4);
+  --data-highlight:var(--ink-1);
+}

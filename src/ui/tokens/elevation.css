@@ -1,0 +1,13 @@
+:root{
+  /* Shadows are warm and low. Hairline borders are preferred over shadow;
+     shadow signals lift (menus, modals, dragged cards) not decoration. */
+  --shadow-none:none;
+  --shadow-hairline:0 0 0 1px var(--border-hairline);
+  --shadow-1:0 1px 2px rgba(20,18,15,.05),0 2px 8px rgba(20,18,15,.04);
+  --shadow-2:0 2px 4px rgba(20,18,15,.06),0 8px 24px rgba(20,18,15,.07);
+  --shadow-3:0 8px 16px rgba(20,18,15,.08),0 24px 56px rgba(20,18,15,.10);
+  --shadow-press:inset 0 2px 0 rgba(20,18,15,.10);
+  --shadow-focus:0 0 0 3px var(--signal-2);
+  --ring-focus:0 0 0 2px var(--paper-0),0 0 0 4px var(--signal-3);
+  --blur-glass:saturate(1.15) blur(14px);
+}
