@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     // Desktop app build output. `electron/` itself is linted with the Next rules.
     "dist-electron/**",
     "release/**",
+    // Local agent worktrees: whole checkouts of other branches, not this one.
+    ".claude/**",
   ]),
 ]);
 
