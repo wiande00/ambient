@@ -1,15 +1,42 @@
 # Ambient
 
-A time tracker for Windows that works out where your hours went without you starting or
-stopping anything. It watches which window has focus, cuts the day at its natural breaks,
-and asks Claude for one plain sentence and one project per stretch — a handful of chunks a
-day, plus honest idle and away time.
+**A Windows time tracker you never have to start: it watches which window has focus and
+has Claude write up where the hours went.**
 
-- **Automatic.** Starts when you sign in and runs quietly in the tray.
-- **Local.** Everything it records stays in `~/.ambient/` on your machine.
-- **Correctable.** Edit, add or delete any stretch; your edits sit on top of what was measured.
-- **Works with Claude.** Ships an MCP server so Claude can read your days and keep your
-  projects list.
+[![Latest release](https://img.shields.io/github/v/release/wiande00/ambient)](https://github.com/wiande00/ambient/releases/latest)
+[![MIT licence](https://img.shields.io/github/license/wiande00/ambient)](LICENSE)
+![Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
+
+Ambient works out where your hours went without you starting or stopping anything. It
+watches which window has focus, cuts the day at its natural breaks, and asks Claude for one
+plain sentence and one project per stretch — a handful of chunks a day, plus honest idle and
+away time.
+
+<!--
+  Screenshot placeholder: save a capture of the day screen (with demo projects, not real
+  activity) as docs/screenshot.png and uncomment the line below.
+  ![Ambient's day screen: the day band, labelled chunks and totals by project](docs/screenshot.png)
+-->
+
+## Features
+
+- **Automatic.** Starts when you sign in and runs quietly in the tray. No timers to start.
+- **Labelled by Claude.** Each stretch of the day gets a past-tense sentence and a project,
+  with a per-project *ledger* so the minutes are exact even when the sentence is coarse.
+- **Honest numbers.** Active, idle and away time are measured, not guessed; breaks are
+  shown as breaks.
+- **Correctable.** Edit, add or delete any stretch; your edits sit on top of what was
+  measured and never cost another API call.
+- **Off-computer time.** A switch for pen-and-paper work the screen cannot see.
+- **Works with Claude.** Ships an MCP server so Claude Desktop or Claude Code can read your
+  days, correct them and keep your projects list.
+- **Local-first.** Everything it records stays in `~/.ambient/` on your machine. See
+  [Privacy](#privacy) for exactly what is sent to Claude.
+- **Self-updating.** Checks this repository's releases and verifies each installer's SHA-512.
+
+**Built with** TypeScript, Electron, Next.js (App Router) and React, the Anthropic API
+(Claude Haiku), the Model Context Protocol SDK, and PowerShell with Win32 / UI Automation for
+the collector.
 
 ## Install
 
@@ -43,7 +70,13 @@ the app cleanly, installs silently and starts the new version; your data is unto
 
 ## Privacy
 
-Read this before installing. The collector records, for the window in front: the app, its
+**What leaves your machine:** only the labelling requests to the Anthropic API, sent with
+your own key, and the update check against this repository's releases (which sends nothing
+about you). The recorded logs, your projects, edits and settings stay in `~/.ambient/`; the
+dashboard and the MCP server listen on `127.0.0.1` only. There is no telemetry, no account
+and no Ambient server.
+
+What goes to Claude is the part worth reading before installing. The collector records, for the window in front: the app, its
 title, how long it had focus, and whether there was keyboard or mouse input (never *what*
 was typed). It also reads the **visible text** of that window through Windows UI
 Automation, the same interface screen readers use. That text is what gets sent to the
@@ -55,18 +88,34 @@ It never takes screenshots, logs keystrokes, reads the clipboard, browser histor
 The collector itself makes no network calls. The app makes two kinds: labelling requests to
 the Anthropic API with your key, and the update check against this repository's releases.
 
-## How it works
+## Architecture
 
-Two halves ship as one Windows app:
+Four parts ship as one Windows app:
+
+```
+ collector/collect.ps1 ──writes──▶ ~/.ambient/*.jsonl ◀──reads── Next.js server (127.0.0.1)
+   (PowerShell, hidden)                                      │  measures, cuts, caches
+                                                             ├──▶ Anthropic API (labels)
+ electron/ (tray, window, updater) ──starts & hosts──────────┤
+                                                             └──◀ mcp/server.ts (stdio) ◀── Claude
+```
 
 - **The collector** — `collector/collect.ps1`, a PowerShell script the app runs hidden. It
+  uses Win32 calls (`GetForegroundWindow`, `GetLastInputInfo`) and UI Automation, and
   appends JSON lines to `~/.ambient/<yyyy-MM-dd>.jsonl`: which window had focus and for how
   long, every run of no input, and every stretch the session was locked or the machine
   slept. A window's line is written when focus leaves it, so the one in front right now is
-  kept in `~/.ambient/live.json`, rewritten every 15 seconds.
-- **The dashboard** — a Next.js app, bundled and served on `127.0.0.1` only, that measures
-  each day from those lines, cuts it at its natural breaks, and asks Claude for one sentence
-  and a project per chunk.
+  kept in `~/.ambient/live.json`, rewritten every 15 seconds. It makes no network calls.
+- **The desktop shell** — `electron/`, an Electron main process. It starts the collector
+  and the Next server, owns the window and the tray icon, registers the login item,
+  finishes past days in the background, and checks for and installs updates.
+- **The dashboard** — `src/`, a Next.js app (API routes plus a React UI), run from Next's
+  standalone output on `127.0.0.1` only. `src/lib/ambient/` measures each day from the
+  collector's lines and cuts it at its natural breaks; `src/app/api/ambient/` asks Claude for
+  one sentence and a project per chunk and caches the answer against the exact input.
+- **The MCP server** — `mcp/server.ts`, a stdio Model Context Protocol server that is a thin
+  client of the dashboard's API, so Claude can read and correct days. See
+  [Working with it from Claude](#working-with-it-from-claude).
 
 ## What the day screen shows
 
@@ -188,9 +237,38 @@ Tools: `get_day`, `get_week`, `list_days`, `list_projects`, `add_project`, `upda
 `remove_project`, `start_off_computer`, `stop_off_computer`, `edit_chunk`, `add_chunk`,
 `delete_chunk`, `undo_chunk_edits`, `get_status`.
 
-*Settings › Claude connector* has **Add to Claude Desktop**, which writes the entry into
-Claude Desktop's config (a backup is kept; restart Claude Desktop once), and shows the
-`claude mcp add …` line for Claude Code.
+### Configuring it
+
+The easy way: *Settings › Claude connector* has **Add to Claude Desktop**, which writes the
+entry into Claude Desktop's config (a backup is kept; restart Claude Desktop once), and shows
+the exact `claude mcp add …` line for Claude Code, with your install path filled in.
+
+By hand, an installed app runs the server with its own executable in Node mode. For Claude
+Code:
+
+```powershell
+claude mcp add --scope user ambient -e ELECTRON_RUN_AS_NODE=1 -- `
+  "$env:LOCALAPPDATA\Programs\Ambient\Ambient.exe" `
+  "$env:LOCALAPPDATA\Programs\Ambient\resources\mcp\server.cjs"
+```
+
+For Claude Desktop, in `claude_desktop_config.json` (replace `<you>`):
+
+```json
+{
+  "mcpServers": {
+    "ambient": {
+      "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\Ambient\\Ambient.exe",
+      "args": ["C:\\Users\\<you>\\AppData\\Local\\Programs\\Ambient\\resources\\mcp\\server.cjs"],
+      "env": { "ELECTRON_RUN_AS_NODE": "1" }
+    }
+  }
+}
+```
+
+From a checkout, run `npm run build:mcp` and point the client at
+`node dist-electron/mcp.cjs` instead. The server finds the running app through
+`~/.ambient/dashboard.json` and falls back to `http://127.0.0.1:47821`.
 
 ## Where the data lives
 
@@ -215,11 +293,15 @@ your data.
 Requires Node.js 20+ on Windows.
 
 ```bash
-npm install
+git clone https://github.com/wiande00/ambient.git
+cd ambient
+npm ci
 npm run dev            # dashboard only, http://localhost:3000
 npm run dev:electron   # dashboard + desktop shell + collector
-npm run typecheck
+npm run typecheck      # the Next app, the Electron shell and the MCP server
 npm run lint
+npm run build          # Next standalone output + Electron and MCP bundles
+npm run dist           # the NSIS installer in release/, without publishing
 ```
 
 `AMBIENT_NO_COLLECTOR=1` skips the collector in the dev shell. For development without the
@@ -256,4 +338,4 @@ Icons are from [Lucide](https://lucide.dev/) (ISC licence).
 
 ## Licence
 
-[MIT](LICENSE)
+[MIT](LICENSE) © 2026 William Andersson
