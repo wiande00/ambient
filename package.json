@@ -2,8 +2,22 @@
   "name": "ambient",
   "version": "0.8.0",
   "private": true,
-  "description": "A personal time tracker: where the hours went, from the window that had focus.",
+  "description": "A Windows time tracker that works out where your hours went from the window in focus, with Claude labelling each stretch.",
+  "keywords": [
+    "time-tracking",
+    "electron",
+    "nextjs",
+    "claude",
+    "anthropic",
+    "mcp",
+    "windows",
+    "productivity"
+  ],
   "author": "William Andersson",
+  "homepage": "https://github.com/wiande00/ambient#readme",
+  "bugs": {
+    "url": "https://github.com/wiande00/ambient/issues"
+  },
   "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "next dev",
