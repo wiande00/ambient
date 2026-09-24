@@ -47,3 +47,10 @@ next-env.d.ts
 
 # local tooling
 /.claude/
+
+# local data and logs (the app keeps its own under ~/.ambient, never in the repo)
+*.log
+*.jsonl
+*.db
+*.sqlite
+*.sqlite3
