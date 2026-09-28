@@ -44,3 +44,5 @@ nsis:
   allowToChangeInstallationDirectory: false
   runAfterFinish: true
   deleteAppDataOnUninstall: false
+  # Clears a nested old build out of existing installs before the update uninstalls them.
+  include: resources/installer.nsh
