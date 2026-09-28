@@ -5,6 +5,8 @@ import type { AmbientChunksResponse, AmbientDayResponse, AmbientWeekResponse } f
 import { en } from "@/i18n/en";
 import { DayScreen } from "./DayScreen";
 import { DeskNav } from "./DeskNav";
+import { FocusBadge } from "./FocusBadge";
+import { FocusScreen } from "./FocusScreen";
 import { SettingsScreen } from "./SettingsScreen";
 import { UpdateBanner } from "./UpdateBanner";
 import { useDesktopStatus } from "./useDesktop";
@@ -12,7 +14,7 @@ import { useThemeMode } from "./useThemeMode";
 import { WeekScreen } from "./WeekScreen";
 
 /**
- * The app shell: a sidebar with three screens behind it.
+ * The app shell: a sidebar with four screens behind it.
  *
  * The day screen makes two independent fetches, on purpose. The day endpoint returns only
  * measured figures and needs no key, so the page paints in full from local disk alone. The
@@ -40,16 +42,18 @@ const t = en.ambient;
 /** How often a screen refetches on its own. The chunks route only pays for a model call when the day has moved on enough. */
 const REFRESH_MS = 60_000;
 
-type Screen = "day" | "week" | "settings";
+type Screen = "day" | "week" | "focus" | "settings";
 
 const NAV = [
   { value: "day", label: t.nav.day, icon: "clock" },
   { value: "week", label: t.nav.week, icon: "calendar" },
+  // The badge keeps its own once-a-second clock, so the rest of the dashboard stays still.
+  { value: "focus", label: t.nav.focus, icon: "timer", badge: <FocusBadge /> },
   { value: "settings", label: t.nav.settings, icon: "settings" },
 ];
 
 function toScreen(value: string): Screen {
-  return value === "week" || value === "settings" ? value : "day";
+  return value === "week" || value === "focus" || value === "settings" ? value : "day";
 }
 
 export function AmbientDashboard() {
@@ -150,6 +154,8 @@ export function AmbientDashboard() {
             <UpdateBanner update={desktop?.update} />
             {screen === "settings" ? (
               <SettingsScreen />
+            ) : screen === "focus" ? (
+              <FocusScreen />
             ) : screen === "day" ? (
               day.status === "ready" || day.status === "empty" ? (
                 <DayScreen

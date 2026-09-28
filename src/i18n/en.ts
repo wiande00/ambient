@@ -7,8 +7,9 @@ export const en = {
     nav: {
       day: "Day",
       week: "Week",
+      focus: "Focus",
       settings: "Settings",
-      /** Above the three screen buttons. */
+      /** Above the screen buttons. */
       heading: "Views",
       /** The switch in the title bar names the mode it would move to, not the one in use. */
       toLight: "Light",
@@ -72,6 +73,43 @@ export const en = {
        * collector recorded idle runs. Names the limitation rather than hiding it.
        */
       estimatedNote: "Idle is estimated for this day: its log predates idle recording, so each window's input-free time is assumed to be one stretch.",
+    },
+    focus: {
+      eyebrow: "Pomodoro",
+      phases: {
+        work: "Focus",
+        shortBreak: "Short break",
+        longBreak: "Long break",
+      },
+      start: "Start",
+      resume: "Resume",
+      pause: "Pause",
+      reset: "Reset",
+      skip: "Skip",
+      /** Under the clock while paused mid-phase. */
+      paused: "Paused",
+      /** Under the clock before a phase has started. */
+      ready: "Ready when you are",
+      /** {time} is a clock time. */
+      endsAt: "Ends at {time}",
+      /** {done} of {every} focus rounds before the long break. */
+      round: "Round {done} of {every}",
+      /** {count} focus rounds finished today. */
+      today: "{count} today",
+      todayOne: "1 today",
+      settings: "Lengths",
+      work: "Focus (min)",
+      shortBreak: "Short break (min)",
+      longBreak: "Long break (min)",
+      every: "Long break every",
+      /** The note under the settings: what the timer does and doesn't do. */
+      hint: "The timer keeps running while you look at other views, and in the tray. It only reminds you — the day is still measured from the windows you used.",
+      notify: {
+        workDone: "Focus round done",
+        workDoneBody: "Time for a break.",
+        breakDone: "Break over",
+        breakDoneBody: "Ready for the next round?",
+      },
     },
     offComputer: {
       label: "Working off computer",

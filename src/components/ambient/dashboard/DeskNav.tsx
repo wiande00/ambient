@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Icon } from "@/ui/Icon";
 import { clock } from "@/lib/ambient/format";
 import type { AmbientDesktopStatus } from "@/types/ambient-bridge";
@@ -7,7 +8,7 @@ import { en } from "@/i18n/en";
 import { interpolate } from "@/i18n";
 
 /**
- * The sidebar: three screens, and the collector's own state underneath them.
+ * The sidebar: the screens, and the collector's own state underneath them.
  *
  * The collector card is not decoration. Every figure on every screen is only as true as the
  * collector's log, so the one thing the sidebar owes the person is whether it is running and
@@ -17,7 +18,8 @@ import { interpolate } from "@/i18n";
 
 const t = en.ambient.nav;
 
-export type NavItem = { value: string; label: string; icon: string };
+/** `badge` sits at the item's right end, e.g. the focus timer's time left. */
+export type NavItem = { value: string; label: string; icon: string; badge?: ReactNode };
 
 export function DeskNav({
   items,
@@ -82,6 +84,7 @@ export function DeskNav({
             >
               <Icon name={item.icon} size={17} style={{ color: on ? "var(--data-1t)" : "currentColor" }} />
               <span style={{ flex: 1 }}>{item.label}</span>
+              {item.badge}
             </button>
           );
         })}
