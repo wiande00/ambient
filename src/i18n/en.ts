@@ -224,7 +224,7 @@ export const en = {
       /** The third figure: active hours divided by the days that were observed. */
       average: "average day",
       /** Over the seven bars. */
-      byProject: "Seven days, by project",
+      byProject: "Monday to Sunday, by project",
       /** {duration} is the tallest day's tracked time, which the bars are drawn against. */
       tallest: "Tallest day {duration}",
       /** Over the per-project totals. */
@@ -246,8 +246,10 @@ export const en = {
         next: "Next week",
         thisWeek: "This week",
       },
-      empty: "Nothing tracked in these seven days.",
+      empty: "Nothing tracked this week.",
       notObserved: "Not observed",
+      /** A day later in the current week. */
+      notYet: "Still to come",
       unlabelled: "{duration} on {count} days isn't labelled yet. Open a day to label it.",
       unlabelledOne: "{duration} on 1 day isn't labelled yet. Open it to label it.",
       /** Per-bar tooltip. */

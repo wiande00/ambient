@@ -245,7 +245,7 @@ server.registerTool(
   "get_week",
   {
     title: "Get a week",
-    description: "Seven calendar days ending on the given date (default today): per-day tracked, active, idle and away minutes, plus active minutes per project across the days that have been labelled.",
+    description: "The Monday-to-Sunday week containing the given date (default today): per-day tracked, active, idle and away minutes, plus active minutes per project across the days that have been labelled.",
     inputSchema: { date },
   },
   async ({ date: requested }) => {

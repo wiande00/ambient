@@ -129,7 +129,7 @@ Four parts ship as one Windows app:
   untouched. Each gets a plain past-tense sentence (compound when the stretch held several
   things), a project, and measured minutes. How long an untouched window has to sit before
   it counts as a break is *Break after* on the Settings screen (default 20 minutes).
-- **By project.** Active minutes per project for the day; the week screen totals seven days.
+- **By project.** Active minutes per project for the day; the week screen totals the Monday–Sunday week.
   A chunk is coarse on purpose — one sentence over an hour or two — but its minutes are not
   counted that coarsely. Each chunk carries a *ledger*: the stretch divided between the
   projects that actually held it, on boundaries the collector measured. So an hour of one

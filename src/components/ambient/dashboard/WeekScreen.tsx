@@ -29,17 +29,18 @@ export function WeekScreen({
   onWeekChange,
 }: {
   week: Extract<AmbientWeekResponse, { status: "ready" }>;
-  /** Called with the new last day of the window, or null for the week ending today. */
+  /** Called with a day in the week to show, or null for the current week. */
   onWeekChange: (to: string | null) => void;
 }) {
   const observed = week.days.filter((day) => day.observed);
-  const missing = week.days.length - observed.length;
+  // Days of this week still to come are neither observed nor missing.
+  const missing = week.days.filter((day) => !day.observed && day.date <= week.today).length;
   const tallest = Math.max(1, ...week.days.map((day) => (day.observed ? day.trackedMinutes : 0)));
   const active = observed.reduce((sum, day) => sum + (day.observed ? day.activeMinutes : 0), 0);
   const idle = observed.reduce((sum, day) => sum + (day.observed ? day.idleMinutes : 0), 0);
   const unlabelledDays = observed.filter((day) => day.observed && !day.labelled).length;
   const fillFor = projectFills(week.projects);
-  const viewingPast = week.to !== week.today;
+  const viewingPast = week.to < week.today;
   const longest = observed.reduce<AmbientWeekDay | null>(
     (best, day) => (day.observed && (best === null || !best.observed || day.activeMinutes > best.activeMinutes) ? day : best),
     null,
@@ -82,7 +83,7 @@ export function WeekScreen({
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 14, alignItems: "end", height: 240 }}>
               {week.days.map((day) => (
-                <DayBar key={day.date} day={day} tallest={tallest} fillFor={fillFor} />
+                <DayBar key={day.date} day={day} tallest={tallest} fillFor={fillFor} future={day.date > week.today} />
               ))}
             </div>
 
@@ -135,7 +136,7 @@ export function WeekScreen({
  * time hatched across the top. A day nobody has opened has no projects yet, so its active
  * time draws as one unattributed block rather than claiming a colour it hasn't earned.
  */
-function DayBar({ day, tallest, fillFor }: { day: AmbientWeekDay; tallest: number; fillFor: FillFor }) {
+function DayBar({ day, tallest, fillFor, future }: { day: AmbientWeekDay; tallest: number; fillFor: FillFor; future: boolean }) {
   const label = day.observed
     ? interpolate(t.bar, {
         date: formatShort(day.date),
@@ -143,7 +144,7 @@ function DayBar({ day, tallest, fillFor }: { day: AmbientWeekDay; tallest: numbe
         idle: formatDuration(day.idleMinutes),
         away: formatDuration(day.awayMinutes),
       })
-    : `${formatShort(day.date)}: ${t.notObserved}`;
+    : `${formatShort(day.date)}: ${future ? t.notYet : t.notObserved}`;
 
   const parts: Part[] = [];
   if (day.observed) {

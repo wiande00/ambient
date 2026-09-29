@@ -1,6 +1,6 @@
 {
   "name": "ambient",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "private": true,
   "description": "A Windows time tracker that works out where your hours went from the window in focus, with Claude labelling each stretch.",
   "keywords": [

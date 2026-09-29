@@ -151,7 +151,7 @@ export type AmbientSettingsResponse =
     }
   | { status: "error"; message: string };
 
-/** `/api/ambient/week` — seven calendar days, measured, with project totals from cached chunks only. */
+/** `/api/ambient/week` — a Monday-to-Sunday week, measured, with project totals from cached chunks only. */
 export type AmbientWeekResponse =
   | {
       status: "ready";

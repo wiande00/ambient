@@ -10,7 +10,8 @@ import { isValidDateStamp, todayStamp } from "../store";
 export const runtime = "nodejs";
 
 /**
- * Seven calendar days ending on `?date=` (today by default): measured totals per day, and
+ * The Monday-to-Sunday week (Swedish calendar) containing `?date=` (today by default):
+ * measured totals per day — later days of the current week come back unobserved — and
  * project totals summed from whatever chunk caches exist. Never calls the model — the day
  * screen is where a day gets labelled — so a day nobody has opened contributes its hours to
  * the bars and to `unlabelledMinutes`, not to any project.
@@ -26,8 +27,9 @@ export async function GET(request: Request) {
 
   try {
     const today = todayStamp();
-    const to = requested ?? today;
-    const from = shiftDays(to, -(WINDOW_DAYS - 1));
+    const anchor = requested ?? today;
+    const from = mondayOf(anchor);
+    const to = shiftDays(from, WINDOW_DAYS - 1);
     const dates = Array.from({ length: WINDOW_DAYS }, (_, i) => shiftDays(from, i));
 
     const allChunks: AmbientChunk[] = [];
@@ -74,4 +76,11 @@ export async function GET(request: Request) {
       message: error instanceof Error ? error.message : "The week failed to load.",
     } satisfies AmbientWeekResponse);
   }
+}
+
+/** The Monday on or before `stamp` — weeks run Monday to Sunday. */
+function mondayOf(stamp: string): string {
+  const [y, m, d] = stamp.split("-").map(Number);
+  const sinceMonday = (new Date(y, m - 1, d).getDay() + 6) % 7;
+  return shiftDays(stamp, -sinceMonday);
 }
