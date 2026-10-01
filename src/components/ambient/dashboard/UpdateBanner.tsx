@@ -47,10 +47,21 @@ export function UpdateBanner({ update }: { update: AmbientUpdateState | undefine
   );
 }
 
-function Bar({ text, detail, actions }: { text: string; detail?: string; actions?: React.ReactNode }) {
+/** The one-line banner across the top of the dashboard. `caution` is for something that has stopped working. */
+export function Bar({
+  text,
+  detail,
+  actions,
+  tone = "info",
+}: {
+  text: string;
+  detail?: string;
+  actions?: React.ReactNode;
+  tone?: "info" | "caution";
+}) {
   return (
     <div
-      role="status"
+      role={tone === "caution" ? "alert" : "status"}
       style={{
         display: "flex",
         alignItems: "center",
@@ -59,8 +70,8 @@ function Bar({ text, detail, actions }: { text: string; detail?: string; actions
         marginBottom: "var(--space-6)",
         padding: "var(--space-3) var(--space-4)",
         borderRadius: "var(--radius-card)",
-        background: "var(--status-info-soft)",
-        border: "1px solid var(--border-soft)",
+        background: tone === "caution" ? "var(--status-caution-soft)" : "var(--status-info-soft)",
+        border: tone === "caution" ? "1px solid var(--status-caution)" : "1px solid var(--border-soft)",
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 240 }}>

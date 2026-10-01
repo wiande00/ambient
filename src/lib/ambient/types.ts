@@ -42,6 +42,13 @@ export type AmbientLabelUsage = {
 };
 
 /** `/api/ambient/chunks` — the day's chunks, labelled by the model, plus per-project totals. */
+/**
+ * Why model calls are failing for a reason no retry will get past. `credits`: the Anthropic
+ * account has run out. `auth`: the key was refused. Times are ISO; `since` is when the
+ * problem was first seen with this key, `lastTried` the most recent call that hit it.
+ */
+export type AmbientLabelProblem = { kind: "credits" | "auth"; since: string; lastTried: string };
+
 export type AmbientChunksResponse =
   | {
       status: "ready";
@@ -63,6 +70,8 @@ export type AmbientChunksResponse =
       projectsError: string | null;
       /** Display name per project key from projects.json. Buckets are named by the UI. */
       projectNames: Record<string, string>;
+      /** Set while labelling is stuck on something only the person can fix (`labelHealth.ts`). */
+      labelProblem: AmbientLabelProblem | null;
     }
   | { status: "empty"; date: string }
   | { status: "not_configured" }

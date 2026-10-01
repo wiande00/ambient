@@ -7,6 +7,7 @@ import { DayScreen } from "./DayScreen";
 import { DeskNav } from "./DeskNav";
 import { FocusBadge } from "./FocusBadge";
 import { FocusScreen } from "./FocusScreen";
+import { LabelProblemBanner } from "./LabelProblemBanner";
 import { SettingsScreen } from "./SettingsScreen";
 import { UpdateBanner } from "./UpdateBanner";
 import { useDesktopStatus } from "./useDesktop";
@@ -152,6 +153,14 @@ export function AmbientDashboard() {
 
           <main style={{ flex: 1, minWidth: 0, padding: "38px 44px 48px" }}>
             <UpdateBanner update={desktop?.update} />
+            {chunks.response.status === "ready" ? (
+              <LabelProblemBanner
+                problem={chunks.response.labelProblem}
+                date={chunks.response.date}
+                onOpenSettings={() => setScreen("settings")}
+                onRetried={() => setTick((n) => n + 1)}
+              />
+            ) : null}
             {screen === "settings" ? (
               <SettingsScreen />
             ) : screen === "focus" ? (

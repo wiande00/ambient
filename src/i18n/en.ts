@@ -265,6 +265,21 @@ export const en = {
       /** {version} is the version being installed. */
       installing: "Installing Ambient {version}. It will restart in a moment.",
     },
+    labelProblem: {
+      creditsTitle: "Labelling has stopped: your Anthropic account is out of credit.",
+      creditsBody:
+        "Ambient is still tracking everything, but new stretches stay unlabelled until you add credit. They are labelled as soon as calls go through again.",
+      authTitle: "Labelling has stopped: the Anthropic API key was refused.",
+      authBody: "Ambient is still tracking everything. Check the key in Settings; new stretches stay unlabelled until it works.",
+      /** {time} is a clock time. */
+      lastTried: "Last tried {time}.",
+      billing: "Add credit",
+      settings: "Open Settings",
+      retry: "Try again",
+      dismiss: "Hide",
+      /** After "Try again" when the call still fails. */
+      stillFailing: "Still failing.",
+    },
     settings: {
       title: "Settings",
       loading: "Loading settings…",

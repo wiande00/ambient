@@ -5,6 +5,7 @@ import type { AmbientChunksResponse } from "@/lib/ambient/types";
 import { EMPTY_USAGE, MAX_CALLS_KEPT, readChunkCache, updateChunkCache, type CachedChunks } from "../chunkCache";
 import { loadConfig } from "../config";
 import { loadDay, withEdits } from "../days";
+import { backgroundBlocked, labelProblem, recordFailure, recordSuccess } from "../labelHealth";
 import {
   addUsage,
   assembleChunks,
@@ -111,7 +112,10 @@ async function respond(date: string, mode: Mode): Promise<NextResponse> {
     }
 
     const due = mode === "force" ? unlabelledCandidates(keyed, labels, day.measure) : dueCandidates(keyed, labels, Date.now());
-    if (due.length > 0 && apiKey && !inFlight.has(date)) {
+    // Out of credit or a refused key fails every call the same way until the person acts.
+    // The background waits a while between tries; "Label now" always tries.
+    const blocked = mode !== "force" && backgroundBlocked(apiKey, Date.now());
+    if (due.length > 0 && apiKey && !blocked && !inFlight.has(date)) {
       const job = { apiKey, date, day: day.measure, keyed, input, due, labels, projectKeys, isToday };
       if (cached === null || mode !== "tick") {
         // First look at a day: there is nothing to show yet, so label before answering. The
@@ -174,6 +178,7 @@ async function respond(date: string, mode: Mode): Promise<NextResponse> {
       usage,
       projectsError: projects.error,
       projectNames: Object.fromEntries(projects.file.projects.map((p) => [p.key, p.name])),
+      labelProblem: labelProblem(apiKey),
     } satisfies AmbientChunksResponse);
   } catch (error) {
     return NextResponse.json({
@@ -220,6 +225,8 @@ async function callAndMerge(job: LabelJob): Promise<LabelOutcome> {
       earlier_today: earlierToday(keyed, labels, due),
     };
     const result = await labelCandidates(apiKey, date, partial, due, projectKeys, labels);
+    // The API answered, so the account and key are fine, whatever the answer was.
+    recordSuccess();
     if (!result) return { failed: "The model's answer could not be read." };
 
     const updated = await updateChunkCache(date, (current) => {
@@ -246,6 +253,9 @@ async function callAndMerge(job: LabelJob): Promise<LabelOutcome> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`[ambient] ${date} labelling failed:`, message);
+    const problem = recordFailure(apiKey, error);
+    if (problem?.kind === "credits") return { failed: "The Anthropic account is out of credit." };
+    if (problem?.kind === "auth") return { failed: "The Anthropic API key was refused." };
     return { failed: message };
   }
 }
