@@ -12,11 +12,9 @@ watches which window has focus, cuts the day at its natural breaks, and asks Cla
 plain sentence and one project per stretch — a handful of chunks a day, plus honest idle and
 away time.
 
-<!--
-  Screenshot placeholder: save a capture of the day screen (with demo projects, not real
-  activity) as docs/screenshot.png and uncomment the line below.
-  ![Ambient's day screen: the day band, labelled chunks and totals by project](docs/screenshot.png)
--->
+![Ambient's day screen: the day band, labelled chunks and totals by project](docs/screenshot.png)
+
+<sub>The screenshot uses made-up demo data.</sub>
 
 ## Features
 
@@ -49,6 +47,8 @@ the collector.
    the window keeps it in the tray; quit from the tray icon.
 
 Windows 10 or 11, x64.
+
+If Ambient is useful to you, a ⭐ on this repository helps other people find it.
 
 ### First run
 
