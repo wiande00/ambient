@@ -58,7 +58,7 @@ If Ambient is useful to you, a ⭐ on this repository helps other people find it
   a day costs a few cents at most, and a finished day is cached and never paid for twice.
 - **Projects.** In **Settings › Projects**, add the things you work on, each with a short
   description and a few *hints* — words, window titles or paths that mark that project's
-  work. Anything that fits no project lands in *personal*, *admin* or *other*.
+  work. Anything that fits no project lands in *other*.
 
 ### Updates
 

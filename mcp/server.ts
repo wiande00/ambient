@@ -31,8 +31,6 @@ import type {
 
 const DEFAULT_URL = "http://127.0.0.1:47821";
 const BUCKETS: Record<(typeof FALLBACK_BUCKETS)[number], string> = {
-  personal: "Personal (shopping, games, errands)",
-  admin: "Admin (receipts, accounts, machine setup)",
   other: "Other (belongs to no project)",
 };
 
@@ -367,7 +365,7 @@ server.registerTool(
       date,
       from: time("Start"),
       to: time("End"),
-      project: z.string().optional().describe("A project key from list_projects, or a bucket (personal, admin, other)."),
+      project: z.string().optional().describe("A project key from list_projects, or the bucket other."),
       sentence: z.string().optional().describe("One plain past-tense sentence saying what the stretch was."),
       countIdleAsActive: z.boolean().optional().describe("Count the whole stretch as worked, idle time included. Default false."),
     },
@@ -406,7 +404,7 @@ server.registerTool(
       date,
       from: time("Start"),
       to: time("End"),
-      project: z.string().describe("A project key from list_projects, or a bucket (personal, admin, other)."),
+      project: z.string().describe("A project key from list_projects, or the bucket other."),
       sentence: z.string().min(1).describe("One plain past-tense sentence saying what was done, e.g. \"Worked through chapter 4 exercises on paper\"."),
     },
   },
@@ -462,7 +460,7 @@ server.registerTool(
     description:
       "Turn on the \"working off computer\" switch: from now until it is stopped, time counts as active work on the given project whatever the screen shows — pen and paper, a book, a whiteboard. Any session already running is closed first.",
     inputSchema: {
-      project: z.string().optional().describe("A project key from list_projects, or a bucket (personal, admin, other). Defaults to other."),
+      project: z.string().optional().describe("A project key from list_projects, or the bucket other (the default)."),
       note: z.string().optional().describe("What, in a few words, e.g. \"chapter 4 exercises\". Becomes the chunk's text."),
     },
   },

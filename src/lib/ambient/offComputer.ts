@@ -9,6 +9,8 @@
  * its project whatever window is in front and however long the keyboard is untouched.
  */
 
+import { currentProjectKey, OTHER_BUCKET } from "./projects";
+
 export type OffComputerSession = {
   id: string;
   /** UTC ISO. */
@@ -54,7 +56,7 @@ export function parseOffComputerFile(raw: string | null): OffComputerFile {
       id: entry.id,
       from: entry.from,
       to,
-      project: typeof entry.project === "string" && entry.project ? entry.project : "other",
+      project: typeof entry.project === "string" && entry.project ? currentProjectKey(entry.project) : OTHER_BUCKET,
       note: typeof entry.note === "string" ? entry.note.trim() : "",
     });
   }

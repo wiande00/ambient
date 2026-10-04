@@ -206,8 +206,6 @@ export const en = {
       /** Under a bar on the day screen: how much of the day's active time this project holds. */
       share: "{percent}% of active",
       buckets: {
-        personal: "Personal",
-        admin: "Admin",
         other: "Other",
       },
       none: "No projects yet. Add ~/.ambient/projects.json to total hours per project — see projects.example.json.",
@@ -424,7 +422,7 @@ export const en = {
         hintsHint: "Words, window titles, paths, product names, comma-separated.",
         remove: "Remove",
         add: "Add a project",
-        empty: "No projects yet. Everything lands in Personal, Admin or Other until you add one.",
+        empty: "No projects yet. Everything lands in Other until you add one.",
         nameRequired: "Every project needs a name.",
         save: "Save projects",
         saving: "Saving…",

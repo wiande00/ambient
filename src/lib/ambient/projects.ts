@@ -1,7 +1,7 @@
 /**
  * The projects a person's hours get totalled against. A small list they maintain by hand in
  * `~/.ambient/projects.json` (a committed example sits at the repo root); each chunk of the
- * day is assigned exactly one project key, or one of the fixed buckets below when the work
+ * day is assigned exactly one project key, or the fixed Other bucket below when the work
  * belonged to no project — shopping, a job search, a game.
  *
  * Pure: parsing and validation only. Loading the file is `app/api/ambient/projects.ts`.
@@ -21,7 +21,7 @@ export type AmbientProject = {
 export type AmbientProjectsFile = { version: 1; projects: AmbientProject[] };
 
 /** Where a chunk lands when it belongs to no project. Fixed, so totals stay comparable across days. */
-export const FALLBACK_BUCKETS = ["personal", "admin", "other"] as const;
+export const FALLBACK_BUCKETS = ["other"] as const;
 export type FallbackBucket = (typeof FALLBACK_BUCKETS)[number];
 
 /** The bucket a chunk gets when the model named nothing usable. */
@@ -29,6 +29,22 @@ export const OTHER_BUCKET: FallbackBucket = "other";
 
 export function isFallbackBucket(value: string): value is FallbackBucket {
   return (FALLBACK_BUCKETS as readonly string[]).includes(value);
+}
+
+/**
+ * Buckets that used to exist. Labels, edits and sessions saved before they were dropped
+ * still name them; read back, they count as Other. Still reserved, so a project can never
+ * take one of these keys and inherit those old hours.
+ */
+const RETIRED_BUCKETS = ["personal", "admin"];
+
+/** A stored project key as it counts today: a retired bucket reads as Other. */
+export function currentProjectKey(key: string): string {
+  return RETIRED_BUCKETS.includes(key) ? OTHER_BUCKET : key;
+}
+
+function isReservedKey(value: string): boolean {
+  return isFallbackBucket(value) || RETIRED_BUCKETS.includes(value);
 }
 
 const KEY = /^[a-z0-9-]+$/;
@@ -52,7 +68,7 @@ export function parseProjectsFile(raw: string): AmbientProjectsFile {
     if (typeof project.key !== "string" || !KEY.test(project.key)) {
       throw new Error(`projects[${index}].key must match ${KEY}.`);
     }
-    if (isFallbackBucket(project.key)) throw new Error(`"${project.key}" is a reserved bucket name.`);
+    if (isReservedKey(project.key)) throw new Error(`"${project.key}" is a reserved bucket name.`);
     if (seen.has(project.key)) throw new Error(`Duplicate project key "${project.key}".`);
     seen.add(project.key);
     if (typeof project.name !== "string" || project.name.trim().length === 0) {
@@ -78,7 +94,7 @@ export const EMPTY_PROJECTS: AmbientProjectsFile = { version: 1, projects: [] };
  */
 export function keyForName(name: string, taken: Iterable<string>): string {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "project";
-  const used = new Set<string>([...FALLBACK_BUCKETS, ...taken]);
+  const used = new Set<string>([...FALLBACK_BUCKETS, ...RETIRED_BUCKETS, ...taken]);
   if (!used.has(base)) return base;
   for (let n = 2; ; n++) {
     const candidate = `${base}-${n}`;

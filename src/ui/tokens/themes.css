@@ -9,8 +9,8 @@
    another and a new project never lands on a value that clashes. The `t` variants are the
    same hue darkened enough to set as text on paper; dark mode lightens both instead.
 
-   Buckets (Admin, Personal, Other) sit outside that: they are the honest remainder, so they
-   take a neutral warm ramp and stay quiet next to the named projects. */
+   The Other bucket sits outside that: it is the honest remainder, so it
+   takes a neutral warm tone and stays quiet next to the named projects. */
 
 [data-theme="desk"]{
   /* Scrollbars and native controls follow the mode instead of staying light on a dark page. */
@@ -55,10 +55,8 @@
   --data-bar:var(--data-1);
   --data-highlight:var(--ink-1);
 
-  /* The buckets, quietest first in the order they are ranked. */
-  --bucket-1:oklch(0.72 0.02 75);
-  --bucket-2:oklch(0.82 0.02 75);
-  --bucket-3:oklch(0.88 0.015 75);
+  /* The Other bucket: quiet, so it never competes with a named project. */
+  --bucket:oklch(0.88 0.015 75);
 
   --signal-1:oklch(0.94 0.03 155);
   --signal-2:oklch(0.85 0.06 155);
@@ -128,9 +126,7 @@
   --data-5t:oklch(0.86 0.09 95);
   --data-track:#2A241C;
 
-  --bucket-1:oklch(0.62 0.02 75);
-  --bucket-2:oklch(0.50 0.02 75);
-  --bucket-3:oklch(0.42 0.02 75);
+  --bucket:oklch(0.42 0.02 75);
 
   --signal-1:oklch(0.30 0.05 155);
   --signal-2:oklch(0.42 0.08 155);

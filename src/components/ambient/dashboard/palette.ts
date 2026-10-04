@@ -7,17 +7,17 @@ import { FALLBACK_BUCKETS, isFallbackBucket } from "@/lib/ambient/projects";
  * the same project keeps the same colour everywhere on a screen — ranking within the period
  * rather than against a fixed table keeps a day that only touched one project legible.
  *
- * Named projects take the hue wheel; the buckets take a neutral warm ramp. That split is
- * the point: Admin and Personal are the honest remainder, and giving them a hue of their
- * own would make them compete with work the person actually named.
+ * Named projects take the hue wheel; the Other bucket takes a neutral warm tone. That split
+ * is the point: Other is the honest remainder, and giving it a hue of its own would make it
+ * compete with work the person actually named.
  */
 
 /** Chart sequence: one hue each, same lightness and chroma. Assign in rank order. */
 export const SERIES = ["var(--data-1)", "var(--data-2)", "var(--data-3)", "var(--data-4)", "var(--data-5)"];
 /** The same hues darkened far enough to set as text on paper. Indexed alongside `SERIES`. */
 export const SERIES_TEXT = ["var(--data-1t)", "var(--data-2t)", "var(--data-3t)", "var(--data-4t)", "var(--data-5t)"];
-/** Neutral ramp for the buckets, in the order `FALLBACK_BUCKETS` lists them. */
-export const BUCKETS = ["var(--bucket-1)", "var(--bucket-2)", "var(--bucket-3)"];
+/** Neutral fill for the buckets, in the order `FALLBACK_BUCKETS` lists them. */
+export const BUCKETS = ["var(--bucket)"];
 /** Anything not yet labelled. */
 export const OTHER_FILL = "var(--paper-4)";
 /** Untracked. Must never be merged away, only absorbed when far too small to draw. */

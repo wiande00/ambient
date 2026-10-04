@@ -1,7 +1,7 @@
 import { measureSpan, type AmbientChunk, type AmbientDaySegment, type AmbientProjectSplit } from "./chunks";
 import { measureDay, type AmbientDayMeasure } from "./intervals";
 import { subtractRanges, type ManualRange } from "./offComputer";
-import { OTHER_BUCKET } from "./projects";
+import { currentProjectKey, OTHER_BUCKET } from "./projects";
 import { toLocalIso, type AmbientLog } from "./rollup";
 
 /**
@@ -113,7 +113,7 @@ export function parseEditsFile(raw: string | null): ChunkEditsFile {
         kind: "label",
         from: entry.from,
         to: entry.to,
-        project: typeof entry.project === "string" && entry.project ? entry.project : OTHER_BUCKET,
+        project: typeof entry.project === "string" && entry.project ? currentProjectKey(entry.project) : OTHER_BUCKET,
         label: typeof entry.label === "string" ? entry.label.trim() : "",
         active: entry.active === true,
         at,

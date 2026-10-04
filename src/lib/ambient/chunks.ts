@@ -1,7 +1,7 @@
 import { overlapMs, type IdleInterval } from "./idle";
 import { round1, type AmbientAwayKind, type AmbientDayMeasure, type AmbientInterval } from "./intervals";
 import { offComputerLabel } from "./offComputer";
-import { isFallbackBucket, OTHER_BUCKET, type AmbientProject, type FallbackBucket } from "./projects";
+import { currentProjectKey, isFallbackBucket, OTHER_BUCKET, type AmbientProject, type FallbackBucket } from "./projects";
 import { chromeVocabulary, suppressChrome, toLocalIso, type AmbientContentSnapshot, type AmbientSample } from "./rollup";
 
 /**
@@ -146,9 +146,7 @@ export type ChunkPromptInput = {
 };
 
 const BUCKET_MEANINGS: Record<FallbackBucket, string> = {
-  personal: "Not work: shopping, entertainment, games, social media, personal errands.",
-  admin: "Housekeeping that belongs to no project: receipts, accounts, email triage, machine setup.",
-  other: "Work on something that is not in the project list, or that the evidence cannot place.",
+  other: "Anything that belongs to no listed project — work on something else, personal errands, games, housekeeping — or that the evidence cannot place.",
 };
 
 /** A sub-stretch of one interval, after cutting at breaks. */
@@ -695,7 +693,10 @@ export function unlabelledChunk(candidate: AmbientCandidate): AmbientChunk {
 export function measureChunks(candidate: AmbientCandidate, parts: ChunkPart[], day: AmbientDayMeasure): AmbientChunk[] {
   // `split` is the model's answer; `projects` is what the day says those ranges were worth.
   // The chunk keeps only the measured one, so nothing the model stated about time survives.
-  return parts.map(({ split, ...part }) => {
+  return parts.map(({ split: storedSplit, ...stored }) => {
+    // Parts are cached, so one labelled before a bucket was retired still names it.
+    const part = { ...stored, project: currentProjectKey(stored.project) };
+    const split = storedSplit?.map((entry) => ({ ...entry, project: currentProjectKey(entry.project) }));
     const fromMs = new Date(part.from).getTime();
     const toMs = new Date(part.to).getTime();
     return {
