@@ -8,6 +8,7 @@ import { DeskNav } from "./DeskNav";
 import { FocusBadge } from "./FocusBadge";
 import { FocusScreen } from "./FocusScreen";
 import { LabelProblemBanner } from "./LabelProblemBanner";
+import { Onboarding } from "./Onboarding";
 import { SettingsScreen } from "./SettingsScreen";
 import { UpdateBanner } from "./UpdateBanner";
 import { useDesktopStatus } from "./useDesktop";
@@ -187,6 +188,8 @@ export function AmbientDashboard() {
           </main>
         </div>
       </div>
+      {/* Refetches on close, so a key or projects added in it relabel the day straight away. */}
+      <Onboarding onDone={() => setTick((n) => n + 1)} />
     </div>
   );
 }

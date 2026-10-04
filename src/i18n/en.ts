@@ -265,6 +265,40 @@ export const en = {
       /** {version} is the version being installed. */
       installing: "Installing Ambient {version}. It will restart in a moment.",
     },
+    /** The first-run walkthrough, three slides over the dashboard. */
+    onboarding: {
+      /** {step} of {total}. */
+      stepOf: "Step {step} of {total}",
+      skip: "Skip",
+      back: "Back",
+      next: "Next",
+      saveNext: "Save and continue",
+      start: "Start measuring",
+      /** {message} is the server's reason. */
+      failed: "Could not save: {message}",
+      slides: [
+        {
+          title: "Add your Anthropic key",
+          body: "Ambient measures your time on its own. The key lets Claude read each stretch and say what you were doing, in a sentence and a project.",
+        },
+        {
+          title: "Tell Ambient what to track",
+          body: "Add the things your time goes to: your job, a course, a side project. Claude sorts each stretch into one of them. You can add more in Settings.",
+        },
+        {
+          title: "Start measuring",
+          body: "That's it. Work as you normally do; Ambient watches the window in front and fills in your day as it goes. Nothing leaves this machine except the labelling calls.",
+        },
+      ],
+      keyPlaceholder: "sk-ant-…",
+      keySet: "A key is already set. Paste a new one to replace it.",
+      keyHint: "Stored on this machine and sent only to the Anthropic API. Skip it and every figure still shows, just without labels.",
+      keyLink: "Get a key",
+      projectPlaceholders: ["e.g. Work", "e.g. Linear algebra course", "e.g. Side project"],
+      addAnother: "Add another",
+      /** {names} is the comma-separated list of projects already set. */
+      already: "Already tracking: {names}",
+    },
     labelProblem: {
       creditsTitle: "Labelling has stopped: your Anthropic account is out of credit.",
       creditsBody:
