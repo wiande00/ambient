@@ -216,7 +216,14 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               {/* Lets Enter submit the form even though the visible buttons sit outside it. */}
               <button type="submit" hidden />
             </form>
-          ) : null}
+          ) : (
+            <div className="ambient-onboarding-tip">
+              <span className="ui-mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-accent)" }}>
+                {t.tipLabel}
+              </span>
+              <span style={{ fontSize: "var(--text-body-sm)", color: "var(--ink-2)", lineHeight: "var(--leading-body)" }}>{t.tip}</span>
+            </div>
+          )}
 
           {error ? <span style={{ fontSize: "var(--text-body-sm)", color: "var(--alert-3)" }}>{error}</span> : null}
         </div>

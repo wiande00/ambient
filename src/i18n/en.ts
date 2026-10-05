@@ -296,6 +296,9 @@ export const en = {
       addAnother: "Add another",
       /** {names} is the comma-separated list of projects already set. */
       already: "Already tracking: {names}",
+      /** On the last slide, in the author's own voice. */
+      tipLabel: "A tip from me",
+      tip: "Once you have about two weeks of data, connect Claude to Ambient: Settings › Claude connector › Add to Claude Desktop, then quit Claude Desktop from its tray icon and open it again. Asking Claude about my own weeks gave me some great insights, at least.",
     },
     labelProblem: {
       creditsTitle: "Labelling has stopped: your Anthropic account is out of credit.",
