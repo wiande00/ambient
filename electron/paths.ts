@@ -38,6 +38,11 @@ export function claudeDesktopPendingPath(): string {
   return join(ambientDir(), "claude-desktop-pending.json");
 }
 
+/** The MCP server's own copy of the runtime, outside the install folder (`mcp-runtime.ts`). */
+export function mcpRuntimeDir(): string {
+  return join(ambientDir(), "mcp");
+}
+
 /** Where downloaded installers wait to be installed. `AMBIENT_UPDATE_DIR` overrides. */
 export function updatesDir(): string {
   return process.env.AMBIENT_UPDATE_DIR || join(ambientDir(), "updates");

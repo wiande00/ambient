@@ -3,12 +3,14 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, 
 import { basename, dirname, join } from "node:path";
 import type { AmbientConnectorInfo } from "../src/types/ambient-bridge";
 import type { RotatingLog } from "./log";
+import { mcpExePath, mcpScriptPath } from "./mcp-runtime";
 import { claudeDesktopPendingPath } from "./paths";
 
 /**
  * The MCP connector: how Claude reaches Ambient. The server itself is `mcp/server.ts`,
- * shipped as `resources/mcp/server.cjs` and run by this very executable in Node mode, so
- * nothing else needs installing. This module knows the command line for it and can write
+ * shipped as `resources/mcp/server.cjs` and run by a copy of this executable in Node mode
+ * kept under `~/.ambient/mcp/` (`mcp-runtime.ts`), so nothing else needs installing and an
+ * update does not stop it. This module knows the command line for it and can write
  * that into Claude Desktop's config; for Claude Code it hands back the `claude mcp add`
  * line, since that lives in the user's own config and is one command to run.
  */
@@ -22,8 +24,8 @@ export type ConnectorCommand = { command: string; args: string[]; env: Record<st
 export function connectorCommand(): ConnectorCommand {
   if (app.isPackaged) {
     return {
-      command: process.execPath,
-      args: [join(process.resourcesPath, "mcp", "server.cjs")],
+      command: mcpExePath(),
+      args: [mcpScriptPath()],
       env: { ELECTRON_RUN_AS_NODE: "1" },
     };
   }
@@ -106,6 +108,25 @@ function setWaiting(waiting: boolean): void {
   }
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify({ since: new Date().toISOString() }, null, 2)}\n`, "utf8");
+}
+
+/** Claude Desktop has an `ambient` entry, current or not: the connector is in use there. */
+export function claudeDesktopHasEntry(): boolean {
+  try {
+    return Boolean(readDesktopConfig().config.mcpServers?.[SERVER_NAME]);
+  } catch {
+    return false;
+  }
+}
+
+/** The entry points somewhere other than this build's runtime, e.g. at the install folder as before 0.10.2. */
+export function claudeDesktopOutdated(): boolean {
+  try {
+    const entry = readDesktopConfig().config.mcpServers?.[SERVER_NAME];
+    return Boolean(entry) && !sameCommand(entry, connectorCommand());
+  } catch {
+    return false;
+  }
 }
 
 export function connectorInfo(): AmbientConnectorInfo {

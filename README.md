@@ -230,8 +230,15 @@ It never captures screenshots, keystrokes, clipboard contents, browser history o
 
 Ambient is also an MCP server, so Claude can read where the hours went and keep the
 projects list without the app being opened. The server (`mcp/server.ts`, shipped inside the
-app and run by `Ambient.exe` in Node mode) is a thin client of the dashboard server the app
-already runs on loopback, so nothing leaves the machine. The app must be running.
+app) is a thin client of the dashboard server the app already runs on loopback, so nothing
+leaves the machine. The app must be running.
+
+Claude runs it with a copy of Ambient's executable kept in `~/.ambient/mcp/` (about 250 MB,
+set up the first time the connector is used), not from the install folder. An update stops
+everything in the install folder, and Claude Desktop does not restart a server that stopped,
+so a server started from there needed Claude Desktop restarted after every update. From
+`~/.ambient/mcp/` it keeps running: tools answer "Ambient is not running" while the update
+installs, then work again.
 
 Tools: `get_day`, `get_week`, `list_days`, `list_projects`, `add_project`, `update_project`,
 `remove_project`, `start_off_computer`, `stop_off_computer`, `edit_chunk`, `add_chunk`,
@@ -240,16 +247,18 @@ Tools: `get_day`, `get_week`, `list_days`, `list_projects`, `add_project`, `upda
 ### Configuring it
 
 The easy way: *Settings › Claude connector* has **Add to Claude Desktop**, which writes the
-entry into Claude Desktop's config (a backup is kept; restart Claude Desktop once), and shows
-the exact `claude mcp add …` line for Claude Code, with your install path filled in.
+entry into Claude Desktop's config (a backup is kept; quit Claude Desktop from its tray icon
+and open it again, once), and shows the exact `claude mcp add …` line for Claude Code, with
+your paths filled in. An entry from before 0.10.2, which pointed at the install folder, is
+moved to `~/.ambient/mcp/` on its own; Claude Desktop picks it up at its next restart.
 
-By hand, an installed app runs the server with its own executable in Node mode. For Claude
+By hand, once *Settings › Claude connector* has been opened so the copy exists. For Claude
 Code:
 
 ```powershell
 claude mcp add --scope user ambient -e ELECTRON_RUN_AS_NODE=1 -- `
-  "$env:LOCALAPPDATA\Programs\Ambient\Ambient.exe" `
-  "$env:LOCALAPPDATA\Programs\Ambient\resources\mcp\server.cjs"
+  "$env:USERPROFILE\.ambient\mcp\ambient-mcp.exe" `
+  "$env:USERPROFILE\.ambient\mcp\server.cjs"
 ```
 
 For Claude Desktop, in `claude_desktop_config.json` (replace `<you>`):
@@ -258,8 +267,8 @@ For Claude Desktop, in `claude_desktop_config.json` (replace `<you>`):
 {
   "mcpServers": {
     "ambient": {
-      "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\Ambient\\Ambient.exe",
-      "args": ["C:\\Users\\<you>\\AppData\\Local\\Programs\\Ambient\\resources\\mcp\\server.cjs"],
+      "command": "C:\\Users\\<you>\\.ambient\\mcp\\ambient-mcp.exe",
+      "args": ["C:\\Users\\<you>\\.ambient\\mcp\\server.cjs"],
       "env": { "ELECTRON_RUN_AS_NODE": "1" }
     }
   }
@@ -284,6 +293,7 @@ Everything is under `~/.ambient/`:
 | `chunks/` | Cached labels, keyed to the exact model input |
 | `logs/` | Logs for the shell, the server and the collector |
 | `updates/` | Downloaded installers waiting to be installed |
+| `mcp/` | The runtime Claude runs the MCP server with, once the connector is in use; safe to delete (it is set up again) |
 
 Uninstalling (Windows *Settings › Apps*) leaves this folder in place; delete it to remove
 your data.

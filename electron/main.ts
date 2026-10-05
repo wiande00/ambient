@@ -4,7 +4,8 @@ import { join } from "node:path";
 import type { AmbientDesktopStatus } from "../src/types/ambient-bridge";
 import { Collector } from "./collector";
 import { readConfig, writeConfig } from "./config";
-import { ClaudeDesktopGuard, connectorInfo } from "./connector";
+import { ClaudeDesktopGuard, claudeDesktopHasEntry, claudeDesktopOutdated, connectorInfo } from "./connector";
+import { ensureMcpRuntime, mcpRuntimeExists } from "./mcp-runtime";
 import { DataWatcher } from "./data-watcher";
 import { DayCloser } from "./day-closer";
 import { RotatingLog } from "./log";
@@ -150,6 +151,7 @@ async function main(): Promise<void> {
   // to restart; the guard keeps the entry in its config until then.
   claudeDesktop = new ClaudeDesktopGuard(appLog);
   claudeDesktop.resume();
+  void prepareConnector(claudeDesktop);
   // Sign-out and shutdown. Windows asks first (`query-session-end`) and allows a few seconds
   // for the answer, so the collector is told to stop synchronously here and given that time
   // to write the block it has open. The session is not vetoed: a tracker is not worth a
@@ -198,11 +200,35 @@ async function main(): Promise<void> {
     await installUpdate();
     return status();
   });
-  ipcMain.handle("ambient:connector", () => connectorInfo());
-  ipcMain.handle("ambient:install-claude-desktop", () => {
+  // Settings shows the Claude Code command, which points at the runtime, so it must exist.
+  ipcMain.handle("ambient:connector", async () => {
+    if (app.isPackaged) await ensureMcpRuntime(appLog);
+    return connectorInfo();
+  });
+  ipcMain.handle("ambient:install-claude-desktop", async () => {
     if (!claudeDesktop) throw new Error("Ambient is still starting.");
+    if (app.isPackaged) await ensureMcpRuntime(appLog);
     return claudeDesktop.install();
   });
+}
+
+/**
+ * Keeps the MCP runtime current for whoever uses the connector, and moves a Claude Desktop
+ * entry that still points at the install folder (before 0.10.2) onto the runtime. The
+ * runtime is about 250 MB, so it is only set up once the connector is in use somewhere.
+ */
+async function prepareConnector(guard: ClaudeDesktopGuard): Promise<void> {
+  if (!app.isPackaged) return;
+  if (!mcpRuntimeExists() && !claudeDesktopHasEntry()) return;
+  try {
+    await ensureMcpRuntime(appLog);
+    if (claudeDesktopOutdated()) {
+      appLog?.write("[connector] Claude Desktop's entry points at an old path; moving it to the MCP runtime");
+      guard.install();
+    }
+  } catch (error) {
+    appLog?.write(`[connector] could not prepare the MCP runtime: ${String(error)}`);
+  }
 }
 
 function status(): AmbientDesktopStatus {
