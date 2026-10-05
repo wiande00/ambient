@@ -259,11 +259,15 @@ export function parseAmbientLogV2(raw: string): AmbientLog {
         log.startedAt.push(parsed.t);
         continue;
       }
+      // Only a v2 collector writes idle and away lines, so they mark the file as v2 even when
+      // the collector started on an earlier day and wrote its `start` line there.
       if (parsed.kind === "idle") {
         if (typeof parsed.s === "number" && parsed.s > 0) log.idle.push({ t: parsed.t, s: parsed.s });
+        log.format = 2;
         continue;
       }
       if (parsed.kind === "away") {
+        log.format = 2;
         if (typeof parsed.s === "number" && parsed.s > 0 && (parsed.why === "lock" || parsed.why === "sleep")) {
           log.away.push({ t: parsed.t, s: parsed.s, why: parsed.why });
         }

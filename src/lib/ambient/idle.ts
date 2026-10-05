@@ -26,9 +26,13 @@ export const DEFAULT_AFK_THRESHOLD_S = 300;
 
 export type IdleInterval = { startMs: number; endMs: number };
 
-/** Every recorded idle run that meets the threshold, as absolute intervals, ascending. */
+/**
+ * Every recorded idle run that meets the threshold, as absolute intervals, ascending and
+ * non-overlapping. The collector can write the same run twice — once when the session
+ * locks, again with the full length on return — so overlapping runs are merged.
+ */
 export function idleIntervals(log: AmbientLog, thresholdS: number): IdleInterval[] {
-  return log.idle
+  const runs = log.idle
     .filter((run) => run.s >= thresholdS)
     .map((run) => {
       const startMs = new Date(run.t).getTime();
@@ -36,6 +40,13 @@ export function idleIntervals(log: AmbientLog, thresholdS: number): IdleInterval
     })
     .filter((run) => Number.isFinite(run.startMs))
     .sort((a, b) => a.startMs - b.startMs);
+  const merged: IdleInterval[] = [];
+  for (const run of runs) {
+    const last = merged[merged.length - 1];
+    if (last && run.startMs <= last.endMs) last.endMs = Math.max(last.endMs, run.endMs);
+    else merged.push(run);
+  }
+  return merged;
 }
 
 /**

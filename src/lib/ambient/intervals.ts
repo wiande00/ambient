@@ -103,9 +103,13 @@ export function measureDay(
 
   const masks = unionRanges([...manual, ...removed]);
   const idle = idleIntervals(log, thresholdS).flatMap((run) => subtractRanges(run.startMs, run.endMs, masks));
-  // Samples written before the first `start` line of a v2 run carry no idle runs; they get
-  // the estimate the same as a format-1 log would.
-  const recordedFromMs = log.format === 2 ? earliest(log.startedAt) : Number.POSITIVE_INFINITY;
+  // Samples written before a v2 collector was running carry no idle runs; they get the
+  // estimate the same as a format-1 log would. A collector that started on an earlier day
+  // writes no `start` line into this file, so its first idle or away line counts as one.
+  const recordedFromMs =
+    log.format === 2
+      ? earliest([...log.startedAt, ...log.idle.map((run) => run.t), ...log.away.map((run) => run.t)])
+      : Number.POSITIVE_INFINITY;
 
   const samples = [...log.samples]
     .map((sample) => clipSample(sample, dayStartMs, dayEndMs))
