@@ -519,10 +519,14 @@ $contentSeconds = 30
 # How often live.json is rewritten while a block stays open (and once more whenever one
 # opens). The app reads it on a one-minute refresh; this keeps it well inside that.
 $liveSeconds = 15
-# A block that runs long enough to hit this cap has been open for ~10+ minutes at the
-# $contentSeconds cadence — dropping the second-oldest (never the newest, never the
-# first) keeps the block's opening and its most recent moments, trimming the middle.
-$maxSnapshotsPerBlock = 20
+# A block that runs long enough to hit this cap has been open for ~15+ minutes at the
+# $contentSeconds cadence. Past it the snapshots are thinned evenly: the one dropped is
+# whichever interior snapshot sits closest to its neighbours, never the first or the
+# newest, so a three-hour block keeps a reading every few minutes across all of it. It
+# used to drop the second-oldest, which kept the opening and the last ten minutes and left
+# everything between with no text at all — and an app whose title never changes (a chat
+# app, a single browser tab) is exactly the one that stays in one block for hours.
+$maxSnapshotsPerBlock = 30
 # A tick that took longer than this did not run late — it did not run at all. The loop
 # sleeps for one second, so nothing legitimate comes close: the slowest honest tick is a
 # UI Automation walk hitting its own 1500ms deadline. Anything past this means the process
@@ -760,12 +764,22 @@ try {
                     # the pipeline for the reader to notice and discard later.
                     if ($null -eq $lastSnapshot -or $lastSnapshot.text -ne $extracted) {
                         $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-                        [void]$current.snapshots.Add(@{ t = $stamp; text = $extracted; json = (Format-AmbientSnapshot -Stamp $stamp -Text $extracted) })
+                        [void]$current.snapshots.Add(@{ t = $stamp; at = (Get-Date); text = $extracted; json = (Format-AmbientSnapshot -Stamp $stamp -Text $extracted) })
                         if ($current.snapshots.Count -gt $maxSnapshotsPerBlock) {
-                            # Drop the second-oldest, never the newest and never the
-                            # first — a 3-hour block should still show how it opened, not
-                            # just its most recent moments.
-                            $current.snapshots.RemoveAt(1)
+                            # Thin evenly: drop the interior snapshot whose neighbours are
+                            # closest together, so the gap it leaves is the smallest one
+                            # possible. Never the first (how the block opened) and never
+                            # the newest (where it is now).
+                            $drop = 1
+                            $narrowest = [double]::MaxValue
+                            for ($k = 1; $k -lt ($current.snapshots.Count - 1); $k++) {
+                                $span = ($current.snapshots[$k + 1].at - $current.snapshots[$k - 1].at).TotalSeconds
+                                if ($span -lt $narrowest) {
+                                    $narrowest = $span
+                                    $drop = $k
+                                }
+                            }
+                            $current.snapshots.RemoveAt($drop)
                         }
                     }
                 }
