@@ -5,6 +5,7 @@ import {
   CHUNK_SCHEMA,
   clockOf,
   measureChunks,
+  measureSpan,
   MIN_LLM_MIN,
   unlabelledChunk,
   validateParts,
@@ -229,6 +230,61 @@ export function batchForCalls(due: KeyedCandidate[], maxTokens = MAX_CALL_TOKENS
   }
   if (current.length > 0) batches.push(current);
   return batches;
+}
+
+/**
+ * Keeps a stretch's existing label when only the key changed. A label is cached under a
+ * hash of exactly what the model was shown, so any change to the prompt, the model or how
+ * screen text is read gives every stretch a new key — and without this, every past day the
+ * person had already checked would be labelled again from scratch, with new sentences and
+ * sometimes a different project, and need checking again. A stretch that still starts and
+ * ends where it did is the same stretch: its old label is carried to its new key, and only
+ * stretches that never had one go to the model. The newest matching label wins; the old
+ * key is left for `pruneLabels` to drop.
+ *
+ * On a past day, a label that stops short of its stretch by a tail too short to label —
+ * the last stretch of a day kept growing for a minute after its label landed — is carried
+ * too, run out to the stretch's end, which is how `assembleChunks` already showed it. Not
+ * today: there the stretch is still growing, and running its label out every minute would
+ * keep it from ever being looked at again.
+ */
+export function carryForward(
+  labels: LabelStore,
+  keyed: KeyedCandidate[],
+  day: AmbientDayMeasure,
+  isToday: boolean,
+): { labels: LabelStore; carried: number } {
+  const out: LabelStore = { ...labels };
+  let carried = 0;
+  for (const { candidate, hash } of keyed) {
+    if (!hash || out[hash]?.parts) continue;
+    let exact: CachedLabel | null = null;
+    let short: CachedLabel | null = null;
+    for (const label of Object.values(labels)) {
+      const parts = label.parts;
+      if (!parts || parts.length === 0 || parts[0].from !== candidate.from) continue;
+      const lastTo = parts[parts.length - 1].to;
+      if (lastTo === candidate.to) {
+        if (!exact || label.generatedAt > exact.generatedAt) exact = label;
+      } else if (!isToday && Date.parse(lastTo) < Date.parse(candidate.to)) {
+        if (!short || label.generatedAt > short.generatedAt) short = label;
+      }
+    }
+    if (exact) {
+      out[hash] = { ...exact, attempts: 0 };
+      carried++;
+      continue;
+    }
+    if (short?.parts) {
+      const parts = short.parts;
+      const last = parts[parts.length - 1];
+      const tail = measureSpan(day, Date.parse(last.to), Date.parse(candidate.to));
+      if (tail.minutes >= MIN_LLM_MIN) continue;
+      out[hash] = { ...short, parts: [...parts.slice(0, -1), { ...last, to: candidate.to }], attempts: 0 };
+      carried++;
+    }
+  }
+  return { labels: out, carried };
 }
 
 /**

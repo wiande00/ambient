@@ -5,7 +5,7 @@ import type { AmbientUnclosedDay, AmbientUnclosedResponse } from "@/lib/ambient/
 import { readChunkCache } from "../chunkCache";
 import { loadConfig } from "../config";
 import { loadDay } from "../days";
-import { dueCandidates, keyCandidates, salvageLegacy, type LabelStore } from "../labelling";
+import { carryForward, dueCandidates, keyCandidates, salvageLegacy, type LabelStore } from "../labelling";
 import { loadProjects } from "../projects";
 import { listLogDates, todayStamp } from "../store";
 
@@ -52,7 +52,9 @@ export async function GET(request: Request) {
       const cached = await readChunkCache(date);
       // The same reading the chunks route gives a cache, salvage of the older shape and all,
       // or a day whose labels only need carrying forward would be reported as needing a call.
-      const labels: LabelStore = cached?.version === 4 ? cached.labels : cached ? salvageLegacy(cached, keyed) : {};
+      // Carried forward as the chunks route does, or a stretch that only changed key would
+      // be reported as needing a call — and the closing pass would make it.
+      const labels: LabelStore = carryForward(cached?.version === 4 ? cached.labels : cached ? salvageLegacy(cached, keyed) : {}, keyed, day.measure, false).labels;
       const due = dueCandidates(keyed, labels, nowMs, false);
       if (due.length === 0) continue;
       unclosed.push({

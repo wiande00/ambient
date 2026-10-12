@@ -11,6 +11,7 @@ import {
   addUsage,
   assembleChunks,
   batchForCalls,
+  carryForward,
   chunksKey,
   dueCandidates,
   earlierToday,
@@ -97,8 +98,11 @@ async function respond(date: string, mode: Mode): Promise<NextResponse> {
     const cached = await readChunkCache(date);
 
     // A version 3 file holds one whole-day answer; on a closed day its labels are still good.
-    let labels: LabelStore = cached?.version === 4 ? cached.labels : cached && !isToday ? salvageLegacy(cached, keyed) : {};
-    const salvaged = cached !== null && cached.version !== 4 && Object.keys(labels).length > 0;
+    const stored: LabelStore = cached?.version === 4 ? cached.labels : cached && !isToday ? salvageLegacy(cached, keyed) : {};
+    // A stretch that kept its edges keeps its label, whatever changed in how it is keyed.
+    const carried = carryForward(stored, keyed, day.measure, isToday);
+    let labels: LabelStore = carried.labels;
+    const salvaged = (cached !== null && cached.version !== 4 && Object.keys(labels).length > 0) || carried.carried > 0;
     let usage = cached?.version === 4 ? cached.usage : null;
     let calledNow = false;
 
@@ -153,7 +157,7 @@ async function respond(date: string, mode: Mode): Promise<NextResponse> {
       const fresh = labels;
       await updateChunkCache(date, (current) => {
         const base = current?.version === 4 ? current : null;
-        const merged = base ? base.labels : fresh;
+        const merged = base ? pruneLabels(carryForward(base.labels, keyed, day.measure, isToday).labels, keyed, isToday) : fresh;
         return {
           version: 4,
           generatedAt: base?.generatedAt ?? new Date().toISOString(),
@@ -248,7 +252,7 @@ async function callAndMergeBatch(job: LabelJob): Promise<LabelOutcome> {
     // What was paid for is recorded even when the answer was unusable.
     const updated = await updateChunkCache(date, (current) => {
       const base = current?.version === 4 ? current : null;
-      const merged = pruneLabels({ ...(base?.labels ?? labels), ...(result.labels ?? {}) }, keyed, isToday);
+      const merged = pruneLabels(carryForward({ ...(base?.labels ?? labels), ...(result.labels ?? {}) }, keyed, day, isToday).labels, keyed, isToday);
       return {
         version: 4,
         generatedAt: result.calls[result.calls.length - 1]?.call.at ?? new Date().toISOString(),
