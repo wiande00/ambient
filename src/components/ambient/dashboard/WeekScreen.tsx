@@ -6,6 +6,7 @@ import { interpolate, localeTag } from "@/i18n";
 import { Figure, Figures, SectionTitle, StepButton, TextButton, Title } from "./DayScreen";
 import { HATCH, IDLE_FILL, OTHER_FILL, projectFills, type FillFor } from "./palette";
 import { ProjectList } from "./ProjectList";
+import { ThreadTotals } from "./Rhythm";
 
 /**
  * Seven days as stacked bars — one block per project, idle hatched on top — and the week's
@@ -105,6 +106,8 @@ export function WeekScreen({
             </div>
           </section>
 
+          <HourHeatmap days={week.days} today={week.today} />
+
           <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
             <ProjectList
               totals={week.projects}
@@ -122,6 +125,8 @@ export function WeekScreen({
                   : null
               }
             />
+
+            <ThreadTotals heading={en.ambient.rhythm.weekThreadsHeading} threads={week.threads ?? []} fillFor={fillFor} limit={10} />
 
             <WorthKnowing longest={longest} missing={missing} />
           </div>
@@ -244,4 +249,78 @@ function weekday(stamp: string): string {
 function weekdayLong(stamp: string): string {
   const [y, m, d] = stamp.split("-").map(Number);
   return new Intl.DateTimeFormat(localeTag(), { weekday: "long" }).format(new Date(y, m - 1, d));
+}
+
+/**
+ * The week hour by hour: one row per day, one cell per clock hour, shaded by how many of its
+ * minutes were active. Shows the rhythm the bars cannot — whether the work came in the
+ * morning or the evening, and where the day was broken up — in one neutral tone, darker for more — not a project colour, since an hour can hold several.
+ * Only the hours the week actually used are drawn, so a 9-to-5 week is not mostly blank.
+ */
+function HourHeatmap({ days, today }: { days: AmbientWeekDay[]; today: string }) {
+  const rt = en.ambient.rhythm;
+  const rows = days.map((day) => ({ date: day.date, hours: day.observed ? (day.activeByHour ?? []) : [] }));
+  let first = 24;
+  let last = -1;
+  for (const row of rows) {
+    row.hours.forEach((minutes, hour) => {
+      if (minutes >= 1) {
+        first = Math.min(first, hour);
+        last = Math.max(last, hour);
+      }
+    });
+  }
+  if (last < 0) return null;
+  const hours = Array.from({ length: last - first + 1 }, (_, i) => first + i);
+  const peak = Math.max(1, ...rows.flatMap((row) => row.hours));
+  const columns = `48px repeat(${hours.length}, minmax(0, 1fr))`;
+
+  return (
+    <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16 }}>
+        <SectionTitle>{rt.hoursHeading}</SectionTitle>
+        <span className="ui-mono" style={{ fontSize: 11, color: "var(--ink-4)" }}>
+          {interpolate(rt.hoursScale, { active: formatDuration(peak) })}
+        </span>
+      </div>
+      <div role="table" style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        {rows.map((row) => (
+          <div key={row.date} role="row" style={{ display: "grid", gridTemplateColumns: columns, gap: 3, alignItems: "center" }}>
+            <span
+              role="rowheader"
+              className="ui-mono"
+              style={{ fontSize: 11, color: row.date === today ? "var(--ink-1)" : "var(--ink-4)", fontWeight: row.date === today ? 600 : 400 }}
+            >
+              {weekday(row.date)}
+            </span>
+            {hours.map((hour) => {
+              const minutes = row.hours[hour] ?? 0;
+              const share = Math.min(1, minutes / peak);
+              return (
+                <span
+                  key={hour}
+                  role="cell"
+                  title={interpolate(rt.hourCell, { day: weekdayLong(row.date), hour: `${String(hour).padStart(2, "0")}:00`, active: formatDuration(minutes) })}
+                  style={{
+                    height: 16,
+                    borderRadius: 3,
+                    background:
+                      minutes < 0.5 ? "var(--data-track)" : `color-mix(in oklab, var(--ink-2) ${Math.round(14 + share * 76)}%, var(--data-track))`,
+                  }}
+                />
+              );
+            })}
+          </div>
+        ))}
+        <div aria-hidden="true" style={{ display: "grid", gridTemplateColumns: columns, gap: 3 }}>
+          <span />
+          {hours.map((hour) => (
+            <span key={hour} className="ui-mono" style={{ fontSize: 10, color: "var(--ink-4)", textAlign: "left" }}>
+              {hour % 3 === 0 ? String(hour).padStart(2, "0") : ""}
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }

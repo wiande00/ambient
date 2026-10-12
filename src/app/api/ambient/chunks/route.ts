@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { buildCandidates, projectTotals, toChunkInput, type ChunkPromptInput } from "@/lib/ambient/chunks";
 import type { AmbientDayMeasure } from "@/lib/ambient/intervals";
+import { attachThreads, threadTotals } from "@/lib/ambient/threads";
 import type { AmbientChunksResponse } from "@/lib/ambient/types";
 import { EMPTY_USAGE, MAX_CALLS_KEPT, readChunkCache, updateChunkCache, type CachedChunks } from "../chunkCache";
 import { loadConfig } from "../config";
@@ -9,6 +10,7 @@ import { backgroundBlocked, labelProblem, recordFailure, recordSuccess } from ".
 import {
   addUsage,
   assembleChunks,
+  batchForCalls,
   chunksKey,
   dueCandidates,
   earlierToday,
@@ -111,7 +113,7 @@ async function respond(date: string, mode: Mode): Promise<NextResponse> {
       }
     }
 
-    const due = mode === "force" ? unlabelledCandidates(keyed, labels, day.measure) : dueCandidates(keyed, labels, Date.now());
+    const due = mode === "force" ? unlabelledCandidates(keyed, labels, day.measure) : dueCandidates(keyed, labels, Date.now(), isToday);
     // Out of credit or a refused key fails every call the same way until the person acts.
     // The background waits a while between tries; "Label now" always tries.
     const blocked = mode !== "force" && backgroundBlocked(apiKey, Date.now());
@@ -135,7 +137,7 @@ async function respond(date: string, mode: Mode): Promise<NextResponse> {
       }
     }
 
-    const chunks = withEdits(assembleChunks(keyed, labels, day.measure), day, config.breakMinutes);
+    const chunks = attachThreads(withEdits(assembleChunks(keyed, labels, day.measure), day, config.breakMinutes), day.edited);
     const pending = pendingCount(keyed, labels);
 
     // Checked after assembling, so a day already labelled renders with no key at all, and
@@ -170,6 +172,7 @@ async function respond(date: string, mode: Mode): Promise<NextResponse> {
       date,
       chunks,
       projects: projectTotals(chunks),
+      threads: threadTotals(chunks),
       cached: !calledNow,
       pending,
       unlabelled: apiKey
@@ -204,9 +207,11 @@ type LabelJob = {
 type LabelOutcome = { cache: CachedChunks } | { failed: string };
 
 /**
- * One call for the due candidates, merged into the day's cache as it is on disk at the
- * moment the answer lands. Fails when the model gave nothing readable or the call itself
- * failed; either way the next tick may try again.
+ * The due candidates, labelled and merged into the day's cache as it is on disk at the
+ * moment each answer lands: one call per batch small enough to stay well inside the model's
+ * cheaper price tier, in day order, so each batch sees the labels of the ones before it as
+ * `earlier_today`. Fails when a batch got nothing readable or a call itself failed; the
+ * batches already merged stay merged, and the next tick tries again for the rest.
  */
 function runLabelling(job: LabelJob): Promise<LabelOutcome> {
   const run = callAndMerge(job);
@@ -217,6 +222,18 @@ function runLabelling(job: LabelJob): Promise<LabelOutcome> {
 }
 
 async function callAndMerge(job: LabelJob): Promise<LabelOutcome> {
+  let labels = job.labels;
+  let cache: CachedChunks | null = null;
+  for (const batch of batchForCalls(job.due)) {
+    const outcome = await callAndMergeBatch({ ...job, due: batch, labels });
+    if ("failed" in outcome) return outcome;
+    cache = outcome.cache;
+    labels = cache.labels;
+  }
+  return cache ? { cache } : { failed: "Nothing was due." };
+}
+
+async function callAndMergeBatch(job: LabelJob): Promise<LabelOutcome> {
   const { apiKey, date, day, keyed, input, due, labels, projectKeys, isToday } = job;
   try {
     const partial: ChunkPromptInput = {
@@ -227,28 +244,31 @@ async function callAndMerge(job: LabelJob): Promise<LabelOutcome> {
     const result = await labelCandidates(apiKey, date, partial, due, projectKeys, labels);
     // The API answered, so the account and key are fine, whatever the answer was.
     recordSuccess();
-    if (!result) return { failed: "The model's answer could not be read." };
 
+    // What was paid for is recorded even when the answer was unusable.
     const updated = await updateChunkCache(date, (current) => {
       const base = current?.version === 4 ? current : null;
-      const merged = pruneLabels({ ...(base?.labels ?? labels), ...result.labels }, keyed, isToday);
+      const merged = pruneLabels({ ...(base?.labels ?? labels), ...(result.labels ?? {}) }, keyed, isToday);
       return {
         version: 4,
-        generatedAt: result.call.at,
+        generatedAt: result.calls[result.calls.length - 1]?.call.at ?? new Date().toISOString(),
         model: MODEL,
         chunksKey: chunksKey(keyed),
         chunks: assembleChunks(keyed, merged, day),
         labels: merged,
-        usage: addUsage(base?.usage ?? EMPTY_USAGE, result.usage),
-        calls: [...(base?.calls ?? []), result.call].slice(-MAX_CALLS_KEPT),
+        usage: result.calls.reduce((total, call) => addUsage(total, call.usage, call.model), base?.usage ?? EMPTY_USAGE),
+        calls: [...(base?.calls ?? []), ...result.calls.map((call) => call.call)].slice(-MAX_CALLS_KEPT),
       };
     });
 
     const indices = due.map((t) => t.candidate.index).join(", ");
-    const dayUsd = updated ? updated.usage.estimated_usd : result.call.estimated_usd;
-    console.log(
-      `[ambient] ${date} labelled ${due.length} candidate(s) [idx ${indices}] in=${result.call.input_tokens} out=${result.call.output_tokens} $${result.call.estimated_usd.toFixed(4)} (day $${dayUsd.toFixed(4)})`,
-    );
+    const dayUsd = updated ? updated.usage.estimated_usd : 0;
+    for (const { call } of result.calls) {
+      console.log(
+        `[ambient] ${date} ${result.labels ? "labelled" : "asked about"} ${due.length} candidate(s) [idx ${indices}] on ${call.model} in=${call.input_tokens} out=${call.output_tokens} $${call.estimated_usd.toFixed(4)} (day $${dayUsd.toFixed(4)})`,
+      );
+    }
+    if (!result.labels) return { failed: "The model's answer could not be read." };
     return updated ? { cache: updated } : { failed: "The labels could not be saved." };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

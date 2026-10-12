@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildCandidates, toChunkInput } from "@/lib/ambient/chunks";
+import { dayFocus } from "@/lib/ambient/focus";
 import { buildTimeline } from "@/lib/ambient/timeline";
 import type { AmbientDayResponse } from "@/lib/ambient/types";
 import { loadConfig } from "../config";
@@ -56,6 +57,7 @@ export async function GET(request: Request) {
       }),
       band,
       format: day.measure.format,
+      focus: dayFocus(day.edited),
     };
 
     if (debug) {

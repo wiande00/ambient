@@ -53,7 +53,7 @@ export async function GET(request: Request) {
       // The same reading the chunks route gives a cache, salvage of the older shape and all,
       // or a day whose labels only need carrying forward would be reported as needing a call.
       const labels: LabelStore = cached?.version === 4 ? cached.labels : cached ? salvageLegacy(cached, keyed) : {};
-      const due = dueCandidates(keyed, labels, nowMs);
+      const due = dueCandidates(keyed, labels, nowMs, false);
       if (due.length === 0) continue;
       unclosed.push({
         date,

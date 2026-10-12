@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AmbientChunk, ChunkPart } from "@/lib/ambient/chunks";
 import type { AmbientLabelUsage } from "@/lib/ambient/types";
@@ -29,6 +29,10 @@ export type CachedCall = {
   input_tokens: number;
   output_tokens: number;
   estimated_usd: number;
+  /** The model that answered. Absent on calls recorded before there was more than one. */
+  model?: string;
+  /** Set when the call was a retry on the fallback model after the main one declined. */
+  fallback?: boolean;
 };
 
 export type CachedChunks = {
@@ -60,6 +64,15 @@ export const EMPTY_USAGE: AmbientLabelUsage = {
 
 function cachePath(date: string): string {
   return join(ambientDir(), "chunks", `${date}.json`);
+}
+
+/** When the day's cache file last changed, or 0 when there is none: part of what a derived file built from it is keyed on. */
+export async function chunkCacheMtime(date: string): Promise<number> {
+  try {
+    return (await stat(cachePath(date))).mtimeMs;
+  } catch {
+    return 0;
+  }
 }
 
 /** A missing, unreadable, or malformed file all resolve to `null` — a corrupt cache is a miss to regenerate, never an error. */

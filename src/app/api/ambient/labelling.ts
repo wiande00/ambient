@@ -3,14 +3,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   CHUNK_PROMPT,
   CHUNK_SCHEMA,
+  clockOf,
   measureChunks,
   MIN_LLM_MIN,
   unlabelledChunk,
   validateParts,
   type AmbientCandidate,
   type AmbientChunk,
-  type ChunkPart,
   type ChunkPromptInput,
+  type ModelPart,
 } from "@/lib/ambient/chunks";
 import type { AmbientDayMeasure } from "@/lib/ambient/intervals";
 import { OTHER_BUCKET } from "@/lib/ambient/projects";
@@ -27,10 +28,33 @@ import { hashCandidate } from "./store";
  * provisional until a real break closes it anyway.
  */
 
-export const MODEL = "claude-haiku-4-5-20251001";
+export const MODEL = "claude-haiku-5-5";
+/**
+ * Where a stretch goes when the main model declines it. Haiku 5.5 runs safety classifiers
+ * that can refuse a request outright, and screen text from a security course — exploits,
+ * buffer overflows read off lecture slides — is exactly what they look at. Haiku 4.5 has no
+ * such classifier; it labels the same input at ten times the price, for that call only.
+ */
+export const FALLBACK_MODEL = "claude-haiku-4-5-20251001";
 
-/** Haiku 4.5 list prices, dollars per million tokens. The estimate is for the person's eye; the bill is the console's. */
-const USD_PER_MTOK = { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 };
+/**
+ * List prices, dollars per million tokens. The estimate is for the person's eye; the bill is
+ * the console's. Haiku 5.5's rates hold up to a 100K-token prompt, which a call here never
+ * reaches (`MAX_CALL_TOKENS`).
+ */
+const USD_PER_MTOK: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+  [MODEL]: { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
+  [FALLBACK_MODEL]: { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
+};
+
+/**
+ * Estimated input tokens one call may carry, by the JSON's length. Well under the 100K
+ * prompt size past which Haiku 5.5 bills at a higher rate; a day with more due than this
+ * goes in several calls.
+ */
+export const MAX_CALL_TOKENS = 60_000;
+/** Characters per token for estimating a JSON prompt's size before sending it: Haiku 5.5 measured about 3.1 on real days. */
+const CHARS_PER_TOKEN = 3;
 
 /** Tracked minutes the open candidate must grow past its last label before a refresh is worth paying for. */
 export const UNLABELLED_TAIL_MINUTES = 15;
@@ -48,11 +72,17 @@ export type KeyedCandidate = { candidate: AmbientCandidate; entry: CandidateEntr
 
 export type LabelStore = Record<string, CachedLabel>;
 
+/**
+ * The cache key covers what the model was shown and the exact block edges its answer is
+ * turned back into: the prompt gives clock times to the minute, so two versions of an open
+ * stretch can read the same while their edges differ by seconds.
+ */
 export function keyCandidates(candidates: AmbientCandidate[], input: ChunkPromptInput, projectsRaw: string): KeyedCandidate[] {
   const entries = new Map(input.candidates.map((entry) => [entry.index, entry]));
   return candidates.map((candidate) => {
     const entry = entries.get(candidate.index) ?? null;
-    const hash = entry ? hashCandidate(MODEL, CHUNK_PROMPT, CHUNK_SCHEMA, projectsRaw, input.afk_threshold_minutes, entry) : null;
+    const keyed = entry ? { ...entry, edges: candidate.blocks.map((block) => block.from), end: candidate.to } : null;
+    const hash = keyed ? hashCandidate(MODEL, CHUNK_PROMPT, CHUNK_SCHEMA, projectsRaw, input.afk_threshold_minutes, keyed) : null;
     return { candidate, entry, hash };
   });
 }
@@ -144,14 +174,17 @@ function minutesAfter(candidate: AmbientCandidate, sinceIso: string): number {
 
 /**
  * The spend gate. A closed candidate with no usable label is due at once: its input will
- * never change, so the call is paid exactly once. The open candidate — the last of the day
- * — is due only when it has grown enough past its last label to be worth another look.
+ * never change, so the call is paid exactly once. The open candidate — the last of today —
+ * is due only when it has grown enough past its last label to be worth another look. A past
+ * day has no open candidate: its last stretch closed when the day did, and treating it as
+ * still growing left it out of the call that re-labelled the rest of the day, after which
+ * the prune dropped its old label and it showed unlabelled until a second pass.
  */
-export function dueCandidates(keyed: KeyedCandidate[], labels: LabelStore, nowMs: number): KeyedCandidate[] {
+export function dueCandidates(keyed: KeyedCandidate[], labels: LabelStore, nowMs: number, isToday: boolean): KeyedCandidate[] {
   const due: KeyedCandidate[] = [];
   keyed.forEach((item, position) => {
     if (item.hash === null || !wantsCall(labels[item.hash], nowMs)) return;
-    if (position < keyed.length - 1) {
+    if (!isToday || position < keyed.length - 1) {
       due.push(item);
       return;
     }
@@ -170,9 +203,32 @@ export function earlierToday(keyed: KeyedCandidate[], labels: LabelStore, target
   const earlier: NonNullable<ChunkPromptInput["earlier_today"]> = [];
   keyed.slice(0, firstTarget).forEach(({ hash }) => {
     const parts = hash ? labels[hash]?.parts : null;
-    if (parts) earlier.push(...parts.map((p) => ({ from: p.from, to: p.to, project: p.project, what: p.what })));
+    if (parts) earlier.push(...parts.map((p) => ({ from: clockOf(p.from), to: clockOf(p.to), project: p.project, what: p.what })));
   });
   return earlier;
+}
+
+/**
+ * The due candidates in groups small enough for one call each, in day order. Sized by the
+ * JSON each candidate adds to the prompt; a single candidate larger than the limit still
+ * goes, alone.
+ */
+export function batchForCalls(due: KeyedCandidate[], maxTokens = MAX_CALL_TOKENS): KeyedCandidate[][] {
+  const batches: KeyedCandidate[][] = [];
+  let current: KeyedCandidate[] = [];
+  let size = 0;
+  for (const item of due) {
+    const tokens = JSON.stringify(item.entry ?? {}).length / CHARS_PER_TOKEN;
+    if (current.length > 0 && size + tokens > maxTokens) {
+      batches.push(current);
+      current = [];
+      size = 0;
+    }
+    current.push(item);
+    size += tokens;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
 }
 
 /**
@@ -215,35 +271,63 @@ export function salvageLegacy(legacy: LegacyCachedChunks, keyed: KeyedCandidate[
   return labels;
 }
 
-export function estimateUsd(usage: Anthropic.Messages.Usage): number {
+/** What a call cost at the rates of the model that answered it; a model not in the table is priced as the dearest one. */
+export function estimateUsd(usage: Anthropic.Messages.Usage, model: string): number {
+  const rates = USD_PER_MTOK[model] ?? USD_PER_MTOK[FALLBACK_MODEL];
   return (
-    (usage.input_tokens * USD_PER_MTOK.input +
-      usage.output_tokens * USD_PER_MTOK.output +
-      (usage.cache_read_input_tokens ?? 0) * USD_PER_MTOK.cacheRead +
-      (usage.cache_creation_input_tokens ?? 0) * USD_PER_MTOK.cacheWrite) /
+    (usage.input_tokens * rates.input +
+      usage.output_tokens * rates.output +
+      (usage.cache_read_input_tokens ?? 0) * rates.cacheRead +
+      (usage.cache_creation_input_tokens ?? 0) * rates.cacheWrite) /
     1_000_000
   );
 }
 
-export function addUsage(total: AmbientLabelUsage, usage: Anthropic.Messages.Usage): AmbientLabelUsage {
+export function addUsage(total: AmbientLabelUsage, usage: Anthropic.Messages.Usage, model: string): AmbientLabelUsage {
   return {
     calls: total.calls + 1,
     input_tokens: total.input_tokens + usage.input_tokens,
     output_tokens: total.output_tokens + usage.output_tokens,
     cache_read_input_tokens: total.cache_read_input_tokens + (usage.cache_read_input_tokens ?? 0),
     cache_creation_input_tokens: total.cache_creation_input_tokens + (usage.cache_creation_input_tokens ?? 0),
-    estimated_usd: total.estimated_usd + estimateUsd(usage),
+    estimated_usd: total.estimated_usd + estimateUsd(usage, model),
   };
 }
 
-type ModelOutput = { candidates?: { index: number; parts: ChunkPart[] }[] };
+type ModelOutput = { candidates?: { index: number; parts: ModelPart[] }[] };
 
-export type LabelResult = { labels: LabelStore; call: CachedCall; usage: Anthropic.Messages.Usage };
+/** One request as it went out and came back. */
+export type LabelCall = { model: string; usage: Anthropic.Messages.Usage; call: CachedCall };
+
+/** Everything one labelling pass paid for: one call, or two when the main model declined and the fallback answered. */
+export type LabelResult = { labels: LabelStore; calls: LabelCall[] };
 
 /**
- * One call for the given candidates only. Returns null when the model gave nothing
- * readable, so nothing is recorded and the next tick may try again; a readable answer that
- * fails validation is recorded as a rejection against that candidate's key.
+ * The request for one model. Haiku 5.5 thinks before it answers unless told otherwise, and
+ * labelling a stretch is not hard: low effort keeps that thinking short. Haiku 4.5 rejects
+ * `effort` outright, so it gets none. The output budget leaves room for thinking, which
+ * counts against it.
+ */
+function requestFor(model: string, input: ChunkPromptInput): Anthropic.Messages.MessageCreateParamsNonStreaming {
+  return {
+    model,
+    max_tokens: 16000,
+    system: CHUNK_PROMPT,
+    output_config:
+      model === MODEL
+        ? { effort: "low", format: { type: "json_schema", schema: CHUNK_SCHEMA } }
+        : { format: { type: "json_schema", schema: CHUNK_SCHEMA } },
+    messages: [{ role: "user", content: JSON.stringify(input) }],
+  };
+}
+
+/**
+ * One call for the given candidates only, and a second on the fallback model if the first
+ * was declined. Returns null when no model gave anything readable — a refusal from both, an
+ * answer cut off at the output limit, or unparseable text — so nothing is recorded and the
+ * next tick may try again; a readable answer that fails validation is recorded as a
+ * rejection against that candidate's key. The calls are returned either way, so what was
+ * paid for is never lost.
  */
 export async function labelCandidates(
   apiKey: string,
@@ -252,23 +336,44 @@ export async function labelCandidates(
   targets: KeyedCandidate[],
   projectKeys: Set<string>,
   previous: LabelStore,
-): Promise<LabelResult | null> {
+): Promise<LabelResult | { labels: null; calls: LabelCall[] }> {
   const client = new Anthropic({ apiKey });
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 8000,
-    system: CHUNK_PROMPT,
-    output_config: { format: { type: "json_schema", schema: CHUNK_SCHEMA } },
-    messages: [{ role: "user", content: JSON.stringify(input) }],
-  });
+  const calls: LabelCall[] = [];
+  const ask = async (model: string, fallback: boolean) => {
+    const response = await client.messages.create(requestFor(model, input));
+    calls.push({
+      model,
+      usage: response.usage,
+      call: {
+        at: new Date().toISOString(),
+        candidates: targets.length,
+        input_tokens: response.usage.input_tokens,
+        output_tokens: response.usage.output_tokens,
+        estimated_usd: estimateUsd(response.usage, model),
+        model,
+        ...(fallback ? { fallback: true } : {}),
+      },
+    });
+    return response;
+  };
+
+  let model = MODEL;
+  let response = await ask(MODEL, false);
+  if (response.stop_reason === "refusal") {
+    const category = response.stop_details?.category ?? "unspecified";
+    console.warn(`[ambient] ${date} ${MODEL} declined to label (${category}); retrying on ${FALLBACK_MODEL}`);
+    model = FALLBACK_MODEL;
+    response = await ask(FALLBACK_MODEL, true);
+  }
+  if (response.stop_reason === "refusal" || response.stop_reason === "max_tokens") return { labels: null, calls };
 
   const textBlock = response.content.find((block) => block.type === "text");
-  if (!textBlock || textBlock.type !== "text") return null;
+  if (!textBlock || textBlock.type !== "text") return { labels: null, calls };
   let parsed: ModelOutput;
   try {
     parsed = JSON.parse(textBlock.text) as ModelOutput;
   } catch {
-    return null;
+    return { labels: null, calls };
   }
   const byIndex = new Map((parsed.candidates ?? []).map((entry) => [entry.index, entry.parts ?? []]));
   const generatedAt = new Date().toISOString();
@@ -279,26 +384,17 @@ export async function labelCandidates(
     const returned = byIndex.get(candidate.index) ?? [];
     const parts = validateParts(candidate, returned, projectKeys);
     if (parts) {
-      labels[hash] = { parts, generatedAt, model: MODEL, attempts: 0 };
+      labels[hash] = { parts, generatedAt, model, attempts: 0 };
       continue;
     }
     // Worth a line in the server log: a rejected answer is the one thing that makes a
     // whole stretch of the day go unlabelled, and the reason is only visible here.
     console.warn(
       `[ambient] ${date} candidate ${candidate.index}: model parts rejected`,
-      JSON.stringify(returned.map((p) => ({ from: p.from, to: p.to, project: p.project }))),
-      "blocks:",
-      JSON.stringify(candidate.blocks.map((b) => [b.from, b.to])),
+      JSON.stringify(returned.map((p) => ({ first: p.first_block, last: p.last_block, project: p.project }))),
+      `blocks: ${candidate.blocks.length}`,
     );
-    labels[hash] = { parts: null, generatedAt, model: MODEL, attempts: (previous[hash]?.attempts ?? 0) + 1 };
+    labels[hash] = { parts: null, generatedAt, model, attempts: (previous[hash]?.attempts ?? 0) + 1 };
   }
-
-  const call: CachedCall = {
-    at: generatedAt,
-    candidates: targets.length,
-    input_tokens: response.usage.input_tokens,
-    output_tokens: response.usage.output_tokens,
-    estimated_usd: estimateUsd(response.usage),
-  };
-  return { labels, call, usage: response.usage };
+  return { labels, calls };
 }

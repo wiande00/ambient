@@ -42,6 +42,24 @@ const cache = new Map<string, { key: string; day: LoadedDay }>();
  */
 const parsed = new Map<string, { mtimeMs: number; log: AmbientLog }>();
 
+/**
+ * Days held at once. A day's log is megabytes of screen text, and the server lives as long
+ * as the app does: a search across months would otherwise keep every one of them. A week
+ * on screen plus today fits with room to spare; anything older is read again if asked for.
+ */
+const MAX_DAYS_HELD = 10;
+
+/** Set `key` as the most recently used entry, dropping the least recently used past the cap. */
+function remember<V>(map: Map<string, V>, key: string, value: V): void {
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > MAX_DAYS_HELD) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
+
 const EMPTY_LOG: AmbientLog = { samples: [], idle: [], away: [], format: 2, idleFloorS: null, startedAt: [] };
 
 /**
@@ -68,7 +86,10 @@ export async function loadDay(date: string, thresholdS: number): Promise<LoadedD
   const isToday = date === todayStamp();
   const key = `${logMtime ?? "none"}:${offMtime}:${editMtime}:${thresholdS}`;
   const hit = cache.get(date);
-  if (hit && hit.key === key && !isToday) return hit.day;
+  if (hit && hit.key === key && !isToday) {
+    remember(cache, date, hit);
+    return hit.day;
+  }
 
   const nowMs = Date.now();
   const [manual, logged, live, editsFile] = await Promise.all([
@@ -91,7 +112,7 @@ export async function loadDay(date: string, thresholdS: number): Promise<LoadedD
   const day: LoadedDay = { date, log, measure, edited, edits };
   const open = log !== logged || manual.some((range) => range.endMs === nowMs);
   if (open) cache.delete(date);
-  else cache.set(date, { key, day });
+  else remember(cache, date, { key, day });
   return day;
 }
 
@@ -107,14 +128,17 @@ export function withEdits(raw: AmbientChunk[], day: LoadedDay, breakMinutes: num
 
 async function parsedLog(date: string, mtimeMs: number): Promise<AmbientLog | null> {
   const hit = parsed.get(date);
-  if (hit && hit.mtimeMs === mtimeMs) return hit.log;
+  if (hit && hit.mtimeMs === mtimeMs) {
+    remember(parsed, date, hit);
+    return hit.log;
+  }
   const raw = await readLog(date);
   if (raw === null) {
     parsed.delete(date);
     return null;
   }
   const log = parseAmbientLogV2(raw);
-  parsed.set(date, { mtimeMs, log });
+  remember(parsed, date, { mtimeMs, log });
   return log;
 }
 

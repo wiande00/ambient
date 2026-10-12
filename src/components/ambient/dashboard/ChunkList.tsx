@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Icon } from "@/ui/Icon";
 import type { AmbientChunk, AmbientDaySegment } from "@/lib/ambient/chunks";
 import { clock, formatDuration } from "@/lib/ambient/format";
+import type { AmbientThreadLine } from "@/lib/ambient/threads";
 import type { AmbientChunksResponse, AmbientEditsResponse } from "@/lib/ambient/types";
 import { en } from "@/i18n/en";
 import { interpolate } from "@/i18n";
@@ -31,6 +32,9 @@ const labels = en.ambient.labels;
 const te = en.ambient.edit;
 
 export type LabelState = "loading" | "ready" | "noKey" | "unavailable";
+
+/** An unlabelled stretch shorter than this is not shown: a window that flashed up, not something done. */
+export const MIN_STRETCH_MINUTES = 0.5;
 
 /** What editing needs, present only once the chunks have arrived. */
 export type ChunkEditing = {
@@ -192,6 +196,9 @@ export function ChunkList({
         }
 
         const own = chunks.filter((chunk) => chunk.candidate === segment.index);
+        // A stretch of a few seconds between two gaps — a window that flashed up as the
+        // machine woke — is not something anyone did. Nothing could label it; it is left out.
+        if (segment.minutes < MIN_STRETCH_MINUTES && own.every((chunk) => chunk.label === null)) return null;
         if (own.length === 0) {
           return (
             <PendingCard key={index} from={segment.from} to={segment.to} minutes={segment.minutes} text={pendingText(labelState)} />
@@ -374,7 +381,74 @@ function ChunkCard({
           {chunk.edit ? <span style={{ fontSize: 12, color: "var(--ink-4)" }}>{te.edited}</span> : null}
         </div>
       ) : null}
+
+      <Threads threads={chunk.threads ?? []} fillFor={fillFor} plain={unlabelled} />
     </Shell>
+  );
+}
+
+/** Minutes of the shortest thread worth a row: a few seconds in passing is left to the "more" line. */
+const MIN_THREAD_ROW_MINUTES = 0.5;
+
+/**
+ * What a stretch held, measured: each conversation, page or document, with its minutes and
+ * the project its time counted under. Closed by default — the card's sentence is the story,
+ * this is the evidence under it — and opened on a click.
+ */
+function Threads({ threads, fillFor, plain }: { threads: AmbientThreadLine[]; fillFor: FillFor; plain: boolean }) {
+  const [open, setOpen] = useState(false);
+  const rows = threads.filter((line) => line.rest || line.minutes >= MIN_THREAD_ROW_MINUTES);
+  const named = rows.filter((line) => !line.rest);
+  if (named.length === 0) return null;
+  const hiddenCount = threads.length - rows.length;
+  const rest = threads.find((line) => line.rest);
+  const restCount = (rest ? threads.length - 1 - named.length : 0) + hiddenCount;
+  const restMinutes = (rest?.minutes ?? 0) + threads.filter((line) => !line.rest && line.minutes < MIN_THREAD_ROW_MINUTES).reduce((sum, line) => sum + line.minutes, 0);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="ui-mono ambient-row-action"
+        style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--ink-4)", padding: 0, background: "none", border: "none", cursor: "pointer" }}
+      >
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={12} />
+        {open ? t.threadsHide : interpolate(t.threadsShow, { count: String(named.length + (restCount > 0 ? restCount : 0)) })}
+      </button>
+      {open ? (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+          {named.map((line) => (
+            <li
+              key={`${line.project}:${line.app}:${line.name}`}
+              title={interpolate(t.threadActive, { active: formatDuration(line.activeMinutes) })}
+              style={{ display: "grid", gridTemplateColumns: "8px minmax(0, 1fr) auto", alignItems: "center", gap: 10 }}
+            >
+              <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: plain ? OTHER_FILL : fillFor(line.project) }} />
+              <span style={{ fontSize: 13, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {line.name}
+                <span className="ui-mono" style={{ fontSize: 11, color: "var(--ink-4)", marginLeft: 8 }}>
+                  {line.app.toLowerCase()}
+                </span>
+              </span>
+              <span className="ui-mono" style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                {formatDuration(line.minutes)}
+              </span>
+            </li>
+          ))}
+          {restCount > 0 && restMinutes >= 0.1 ? (
+            <li style={{ display: "grid", gridTemplateColumns: "8px minmax(0, 1fr) auto", alignItems: "center", gap: 10 }}>
+              <span aria-hidden="true" />
+              <span style={{ fontSize: 12, color: "var(--ink-4)" }}>{interpolate(t.threadsRest, { count: String(restCount) })}</span>
+              <span className="ui-mono" style={{ fontSize: 12, color: "var(--ink-4)" }}>
+                {formatDuration(restMinutes)}
+              </span>
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

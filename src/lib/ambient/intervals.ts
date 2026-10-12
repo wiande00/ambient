@@ -1,4 +1,5 @@
 import { estimatedIdleSeconds, idleIntervals, overlapMs, type IdleInterval } from "./idle";
+import { clipRuns, threadRuns, tileRuns, type ThreadRun } from "./lenses";
 import { OFF_COMPUTER_APP, subtractRanges, type ManualRange } from "./offComputer";
 import type { AmbientContentSnapshot, AmbientLog, AmbientSample } from "./rollup";
 
@@ -32,6 +33,11 @@ export type AmbientInterval = {
   estimated: boolean;
   /** Screen-content extractions taken during this interval, chronological. Kept raw; shaping is the reader's job. */
   contents?: AmbientContentSnapshot[];
+  /**
+   * What the interval was on, moment by moment: the conversation, page or document (see
+   * `lenses.ts`), tiling the interval exactly. Absent on a session, which is not a window.
+   */
+  threads?: ThreadRun[];
   /** Set when this is a "working off the computer" session rather than a window: fully active, already assigned. */
   manual?: { project: string; note: string };
 };
@@ -137,6 +143,7 @@ export function measureDay(
       last.estimated = last.estimated || estimated;
       last.titles = rankTitles(addTitle(weights[weights.length - 1], sample.title, sample.dwell_s * 1000));
       if (sample.contents?.length) last.contents = [...(last.contents ?? []), ...sample.contents];
+      last.threads = tileRuns([...(last.threads ?? []), ...threadRuns(sample.app, sample.title, sample.contents, startMs, endMs)], last.startMs, last.endMs);
       continue;
     }
 
@@ -151,6 +158,7 @@ export function measureDay(
       idleMs,
       estimated,
       ...(sample.contents?.length ? { contents: [...sample.contents] } : {}),
+      threads: threadRuns(sample.app, sample.title, sample.contents, startMs, endMs),
     });
   }
 
@@ -236,6 +244,7 @@ function foldManual(screen: AmbientInterval[], manual: ManualRange[], masks: Clo
         idleMs,
         activeMs: part.endMs - part.startMs - idleMs,
         ...(contents.length > 0 ? { contents } : { contents: undefined }),
+        threads: clipRuns(iv.threads ?? [], part.startMs, part.endMs),
       });
     }
   }
@@ -287,6 +296,20 @@ function awayIntervals(intervals: AmbientInterval[], log: AmbientLog, removed: C
     out.push({ startMs, endMs, why });
   }
   return out;
+}
+
+/** An estimated interval's idle sits at its tail; a stretch of it gets the part of that tail it covers. */
+export function estimatedTail(iv: AmbientInterval, startMs: number, endMs: number): number {
+  const tailStart = iv.endMs - iv.idleMs;
+  return Math.max(0, Math.min(endMs, iv.endMs) - Math.max(startMs, tailStart));
+}
+
+/** Idle milliseconds of one interval inside `[startMs, endMs)`, by whichever rule measured the interval. */
+export function idleWithin(iv: AmbientInterval, startMs: number, endMs: number, dayIdle: IdleInterval[]): number {
+  const from = Math.max(startMs, iv.startMs);
+  const to = Math.min(endMs, iv.endMs);
+  if (to <= from) return 0;
+  return iv.estimated ? Math.min(to - from, estimatedTail(iv, from, to)) : overlapMs(from, to, dayIdle);
 }
 
 /** The sample clipped to `[dayStartMs, dayEndMs)`, or null when none of it falls inside. */

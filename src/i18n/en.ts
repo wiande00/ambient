@@ -74,6 +74,37 @@ export const en = {
        */
       estimatedNote: "Idle is estimated for this day: its log predates idle recording, so each window's input-free time is assumed to be one stretch.",
     },
+    /**
+     * How the day's attention moved, measured from the windows (`lib/ambient/focus.ts`).
+     * Figures, never a grade: a day of messages switches a lot and that is not a failing.
+     */
+    rhythm: {
+      /** Captions under each figure in the row beneath the headline figures. */
+      started: "first active",
+      stopped: "last active",
+      switches: "switches an hour",
+      switchesHint: "Changes between conversations, pages and documents, per active hour. Passing through a window for under ten seconds is not counted.",
+      glances: "in glances",
+      glancesHint: "Share of active time spent on things held for under two minutes at a time.",
+      longestProject: "longest on one project",
+      /** {name} is the project, {range} a clock range. */
+      longestProjectHint: "{name}, {range}",
+      longestThread: "longest on one thing",
+      /** {name} is a conversation, page or document; {range} a clock range. */
+      longestThreadHint: "{name}, {range}",
+      calls: "on calls",
+      video: "on video",
+      /** The day's thread totals, in the right-hand rail. */
+      threadsHeading: "What held the day",
+      /** The week's, on the week screen. */
+      weekThreadsHeading: "What held the week",
+      /** The hour-by-hour grid on the week screen. */
+      hoursHeading: "Hour by hour",
+      /** Hover text on one cell: {day} a weekday, {hour} a clock hour, {active} a duration. */
+      hourCell: "{day} {hour}: {active} active",
+      /** Under the grid: what the darkest cell holds. */
+      hoursScale: "Darkest: {active} in an hour",
+    },
     focus: {
       eyebrow: "Pomodoro",
       phases: {
@@ -165,6 +196,13 @@ export const en = {
       alsoProject: "also {name} {duration}",
       /** The share of the stretch that was active, as a bar. */
       activeShare: "{active} active of {total}",
+      /** Opens the list of what the stretch held — conversations, pages, documents. {count} is how many. */
+      threadsShow: "What it held · {count}",
+      threadsHide: "Hide",
+      /** The summed tail of the list. {count} is how many more threads. */
+      threadsRest: "{count} more",
+      /** Hover text on a thread's row. {active} is its active time. */
+      threadActive: "{active} active",
     },
     /** Correcting the day by hand: editing a chunk, adding one, taking one out. */
     edit: {

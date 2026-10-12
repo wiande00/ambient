@@ -1,8 +1,10 @@
 import type { AmbientCandidate, AmbientChunk, AmbientDaySegment, AmbientProjectTotal } from "./chunks";
 import type { ChunkEdit } from "./edits";
+import type { AmbientFocus } from "./focus";
 import type { AmbientDayTotals } from "./intervals";
 import type { OffComputerSession } from "./offComputer";
 import type { AmbientProject } from "./projects";
+import type { AmbientThreadTotal } from "./threads";
 import type { AmbientTimeline } from "./timeline";
 
 /**
@@ -27,6 +29,8 @@ export type AmbientDayResponse =
       candidates: Omit<AmbientCandidate, "blocks">[];
       band: AmbientTimeline | null;
       format: 1 | 2;
+      /** How the day's attention moved: first and last active moment, hours, switches, glances, calls, video (`focus.ts`). */
+      focus: AmbientFocus;
     }
   | { status: "empty"; date: string; today: string; days: string[] }
   | { status: "error"; message: string };
@@ -53,8 +57,11 @@ export type AmbientChunksResponse =
   | {
       status: "ready";
       date: string;
+      /** Each with `threads`: what the stretch was spent on, measured (`threads.ts`). */
       chunks: AmbientChunk[];
       projects: AmbientProjectTotal[];
+      /** The day's threads, longest first, each under the project that held most of it. */
+      threads: AmbientThreadTotal[];
       /** True when served from the on-disk cache without a model call in this request. */
       cached: boolean;
       /** Stretches the model has yet to label; they show as unlabelled until a call for them lands. */
@@ -95,6 +102,10 @@ export type AmbientWeekDay =
        * active time as one unattributed block rather than claiming a project it doesn't know.
        */
       projects: AmbientProjectTotal[];
+      /** Active minutes in each local clock hour, 0–23. */
+      activeByHour: number[];
+      /** The day's rhythm in brief. */
+      focus: Pick<AmbientFocus, "firstActiveAt" | "lastActiveAt" | "switchesPerHour" | "glanceShare" | "meetingMinutes" | "videoMinutes">;
     };
 
 /** `/api/ambient/projects` — the projects file as the Settings screen edits it. */
@@ -171,6 +182,33 @@ export type AmbientWeekResponse =
       projects: AmbientProjectTotal[];
       /** Tracked minutes on observed days that have no chunk cache yet. */
       unlabelledMinutes: number;
+      projectNames: Record<string, string>;
+      /** The week's threads, longest first; on a day nobody has labelled they carry no project. */
+      threads: AmbientThreadTotal[];
+    }
+  | { status: "error"; message: string };
+
+/** One day's matches in a search. */
+export type AmbientSearchDay = { date: string; minutes: number; activeMinutes: number };
+
+/** `/api/ambient/search` — where the time went on anything matching a query, across days. Measured; never calls the model. */
+export type AmbientSearchResponse =
+  | {
+      status: "ready";
+      query: string;
+      /** The dates searched, oldest and newest. */
+      from: string;
+      to: string;
+      /** Days searched that had a log. */
+      daysSearched: number;
+      minutes: number;
+      activeMinutes: number;
+      /** Days with a match, newest first. */
+      byDay: AmbientSearchDay[];
+      /** The matching threads, longest first. */
+      threads: AmbientThreadTotal[];
+      /** Matching labelled stretches, newest first. */
+      stretches: { date: string; from: string; to: string; project: string; label: string; what: string; minutes: number }[];
       projectNames: Record<string, string>;
     }
   | { status: "error"; message: string };

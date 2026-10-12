@@ -1,8 +1,10 @@
 import { overlapMs, type IdleInterval } from "./idle";
-import { round1, type AmbientAwayKind, type AmbientDayMeasure, type AmbientInterval } from "./intervals";
+import { idleWithin, round1, type AmbientAwayKind, type AmbientDayMeasure, type AmbientInterval } from "./intervals";
+import { cleanText, type Thread } from "./lenses";
 import { offComputerLabel } from "./offComputer";
 import { currentProjectKey, isFallbackBucket, OTHER_BUCKET, type AmbientProject, type FallbackBucket } from "./projects";
 import { chromeVocabulary, suppressChrome, toLocalIso, type AmbientContentSnapshot, type AmbientSample } from "./rollup";
+import type { AmbientThreadLine } from "./threads";
 
 /**
  * Chunks: the day as a handful of stretches, each with one sentence and one project.
@@ -39,15 +41,29 @@ export const AWAY_SPLIT_MIN = 20;
 export const DEFAULT_BREAK_MINUTES = 20;
 /** Candidates with less tracked time than this are not worth a model call. */
 export const MIN_LLM_MIN = 5;
-/** Bounds the prompt. The first and last block of a candidate always survive so its boundaries do. */
-export const MAX_BLOCKS_PER_CANDIDATE = 40;
+/**
+ * Bounds the prompt. The first and last block of a candidate always survive so its
+ * boundaries do. Blocks are cut per thread, so a browsing hour is many blocks rather than
+ * one with three titles; the cap is set for that.
+ */
+export const MAX_BLOCKS_PER_CANDIDATE = 60;
 /** Below this, a stretch does not earn its own block; runs of short ones fold into a burst. */
 const MIN_BLOCK_SECONDS = 30;
 /** Titles per block handed to the model. Enough to characterise, not enough to bloat. */
 const MAX_TITLES = 3;
-/** Characters of screen text per block. The strongest signal, and the most expensive. */
-const MAX_TEXT_CHARS = 400;
+/**
+ * Characters of screen text per block, by how long the block held focus: the strongest
+ * signal and the most expensive, so a long block earns more of it than a glance does.
+ */
+function textBudget(minutes: number): number {
+  if (minutes < 2) return 250;
+  if (minutes < 10) return 500;
+  return 900;
+}
+/** Snapshots a block's text is drawn from: its first, middle and last, so a long block is read across its length. */
+const TEXT_SAMPLES = 3;
 
+/** One block as the code keeps it: exact edges, for validating and measuring what comes back. */
 export type ChunkInputBlock = {
   /** Local ISO, from real interval boundaries. */
   from: string;
@@ -115,6 +131,11 @@ export type AmbientChunk = {
   candidate: number;
   /** Set when the person said what this stretch was (`edits.ts`); `active` when they counted all of it as worked. */
   edit?: { active: boolean };
+  /**
+   * What the stretch was spent on — conversations, pages, documents — measured within each
+   * ledger line (`threads.ts`). Attached on the way out of a route, never stored.
+   */
+  threads?: AmbientThreadLine[];
 };
 
 export type AmbientProjectTotal = {
@@ -122,6 +143,22 @@ export type AmbientProjectTotal = {
   minutes: number;
   activeMinutes: number;
   idleMinutes: number;
+};
+
+/**
+ * One block as the model reads it: numbered, with local clock times to the minute and no
+ * figures it could work out itself. The model answers with block numbers, never times, so
+ * nothing it copies can miss a real edge.
+ */
+export type ChunkPromptBlock = {
+  i: number;
+  from: string;
+  to: string;
+  app: string;
+  min: number;
+  idle: number;
+  titles: string[];
+  text?: string;
 };
 
 /** What the model reads. Everything in it is measured except the project descriptions, which the person wrote. */
@@ -136,7 +173,7 @@ export type ChunkPromptInput = {
     minutes: number;
     active_minutes: number;
     idle_minutes: number;
-    blocks: ChunkInputBlock[];
+    blocks: ChunkPromptBlock[];
   }[];
   /**
    * Stretches of the same day already labelled in an earlier pass, given so a partial call
@@ -145,16 +182,24 @@ export type ChunkPromptInput = {
   earlier_today?: { from: string; to: string; project: string; what: string }[];
 };
 
+/** A local ISO instant as the model reads it: "14:05". */
+export function clockOf(localIso: string): string {
+  return localIso.slice(11, 16);
+}
+
 const BUCKET_MEANINGS: Record<FallbackBucket, string> = {
   other: "Anything that belongs to no listed project — work on something else, personal errands, games, housekeeping — or that the evidence cannot place.",
 };
 
-/** A sub-stretch of one interval, after cutting at breaks. */
+/** A sub-stretch of one interval on one thread, after cutting at breaks. */
 type Piece = {
   startMs: number;
   endMs: number;
   app: string;
-  titles: string[];
+  /** The window's own title, for telling its lines apart from the content in its screen text. */
+  windowTitle: string;
+  /** What the stretch was on (`lenses.ts`); its name is the title the model reads. */
+  thread: Thread;
   contents: AmbientContentSnapshot[];
   idleMs: number;
   manual?: { project: string; note: string };
@@ -323,7 +368,12 @@ function isOwnWindow(app: string): boolean {
 
 type CutPiece = (Piece & { kind: "piece" }) | { kind: "break"; startMs: number; endMs: number };
 
-/** Splits every interval at the idle runs inside it that are long enough to be breaks. */
+/**
+ * Splits every interval at the idle runs inside it that are long enough to be breaks, and
+ * what remains at every change of thread, so a block is one conversation, page or document
+ * rather than a window that held three. A piece with no length — a zero-second sample
+ * between two gaps — is not a piece.
+ */
 function cutAtBreaks(intervals: AmbientInterval[], idle: IdleInterval[], breakMinutes: number): CutPiece[] {
   const breaks = idle.filter((run) => (run.endMs - run.startMs) / 60000 >= breakMinutes);
   const out: CutPiece[] = [];
@@ -333,35 +383,44 @@ function cutAtBreaks(intervals: AmbientInterval[], idle: IdleInterval[], breakMi
       if (run.endMs <= cursor || run.startMs >= iv.endMs) continue;
       const breakStart = Math.max(run.startMs, cursor);
       const breakEnd = Math.min(run.endMs, iv.endMs);
-      if (breakStart > cursor) out.push(piece(iv, cursor, breakStart, idle));
+      if (breakStart > cursor) out.push(...threadPieces(iv, cursor, breakStart, idle));
       out.push({ kind: "break", startMs: breakStart, endMs: breakEnd });
       cursor = breakEnd;
     }
-    if (cursor < iv.endMs) out.push(piece(iv, cursor, iv.endMs, idle));
+    if (cursor < iv.endMs) out.push(...threadPieces(iv, cursor, iv.endMs, idle));
   }
   return out;
 }
 
-function piece(iv: AmbientInterval, startMs: number, endMs: number, idle: IdleInterval[]): CutPiece {
+/** `[startMs, endMs)` of one interval as one piece per thread run inside it. */
+function threadPieces(iv: AmbientInterval, startMs: number, endMs: number, idle: IdleInterval[]): CutPiece[] {
+  const fallback: Thread = { key: `${iv.app.toLowerCase()}|${(iv.titles[0] ?? iv.app).toLowerCase()}`, name: iv.titles[0] ?? iv.app, kind: "app" };
+  const runs = (iv.threads ?? []).filter((run) => run.endMs > startMs && run.startMs < endMs);
+  if (runs.length === 0) return endMs > startMs ? [piece(iv, startMs, endMs, idle, fallback)] : [];
+  const out: CutPiece[] = [];
+  for (const run of runs) {
+    const from = Math.max(run.startMs, startMs);
+    const to = Math.min(run.endMs, endMs);
+    if (to > from) out.push(piece(iv, from, to, idle, { key: run.key, name: run.name, kind: run.kind }));
+  }
+  return out;
+}
+
+function piece(iv: AmbientInterval, startMs: number, endMs: number, idle: IdleInterval[], thread: Thread): CutPiece {
   return {
     kind: "piece",
     startMs,
     endMs,
     app: iv.app,
-    titles: iv.titles,
+    windowTitle: iv.titles[0] ?? "",
+    thread,
     contents: isOwnWindow(iv.app) ? [] : (iv.contents ?? []).filter((snap) => {
       const at = new Date(snap.t).getTime();
       return at >= startMs && at < endMs;
     }),
-    idleMs: iv.estimated ? Math.min(endMs - startMs, estimatedTail(iv, startMs, endMs)) : overlapMs(startMs, endMs, idle),
+    idleMs: idleWithin(iv, startMs, endMs, idle),
     ...(iv.manual ? { manual: iv.manual } : {}),
   };
-}
-
-/** An estimated interval's idle sits at its tail; a piece gets the part of that tail it covers. */
-function estimatedTail(iv: AmbientInterval, startMs: number, endMs: number): number {
-  const tailStart = iv.endMs - iv.idleMs;
-  return Math.max(0, Math.min(endMs, iv.endMs) - Math.max(startMs, tailStart));
 }
 
 function toCandidate(index: number, pieces: Piece[], idle: IdleInterval[]): AmbientCandidate {
@@ -390,51 +449,91 @@ function toCandidate(index: number, pieces: Piece[], idle: IdleInterval[]): Ambi
  * length, keeping the first and last so the candidate's edges stay in the model's view.
  */
 function shapeBlocks(pieces: Piece[]): ChunkInputBlock[] {
-  const blocks: ChunkInputBlock[] = [];
+  const runs: Piece[][] = [];
   let i = 0;
   while (i < pieces.length) {
     const p = pieces[i];
     if ((p.endMs - p.startMs) / 1000 >= MIN_BLOCK_SECONDS) {
-      blocks.push(toBlock([p]));
+      runs.push([p]);
       i++;
       continue;
     }
     let j = i;
     while (j < pieces.length && (pieces[j].endMs - pieces[j].startMs) / 1000 < MIN_BLOCK_SECONDS) j++;
-    blocks.push(toBlock(pieces.slice(i, j)));
+    runs.push(pieces.slice(i, j));
     i = j;
   }
 
-  if (blocks.length <= MAX_BLOCKS_PER_CANDIDATE) return blocks;
-  const middle = blocks.slice(1, -1).sort((a, b) => b.minutes - a.minutes).slice(0, MAX_BLOCKS_PER_CANDIDATE - 2);
-  const keep = new Set([blocks[0], blocks[blocks.length - 1], ...middle]);
-  return blocks.filter((block) => keep.has(block));
+  // Choose first, then write: a line of screen text is sent once per thread in a candidate,
+  // so the text has to be written in order over exactly the blocks that will be shown.
+  let kept = runs;
+  if (runs.length > MAX_BLOCKS_PER_CANDIDATE) {
+    const runMs = (run: Piece[]) => run.reduce((sum, p) => sum + (p.endMs - p.startMs), 0);
+    const middle = runs.slice(1, -1).sort((a, b) => runMs(b) - runMs(a)).slice(0, MAX_BLOCKS_PER_CANDIDATE - 2);
+    const keep = new Set([runs[0], runs[runs.length - 1], ...middle]);
+    kept = runs.filter((run) => keep.has(run));
+  }
+  const sent = new Map<string, Set<string>>();
+  return kept.map((run) => toBlock(run, sent));
 }
 
-function toBlock(run: Piece[]): ChunkInputBlock {
+function toBlock(run: Piece[], sent: Map<string, Set<string>>): ChunkInputBlock {
   const startMs = run[0].startMs;
   const endMs = run[run.length - 1].endMs;
   const totalMs = run.reduce((sum, p) => sum + (p.endMs - p.startMs), 0);
   const idleMs = run.reduce((sum, p) => sum + p.idleMs, 0);
-  const apps: string[] = [];
   const titles: string[] = [];
-  const texts: string[] = [];
-  for (const p of run) {
-    if (!apps.includes(p.app)) apps.push(p.app);
-    for (const title of p.titles) if (!titles.includes(title)) titles.push(title);
-    for (const snap of p.contents) texts.push(snap.text);
-  }
-  const text = texts.join(" ").replace(/\s+/g, " ").trim();
+  for (const p of run) if (p.thread.name.trim() && !titles.includes(p.thread.name)) titles.push(p.thread.name);
+  const minutes = round1(totalMs / 60000);
+  const text = blockText(run, textBudget(minutes), sent);
   return {
     from: toLocalIso(new Date(startMs)),
     to: toLocalIso(new Date(endMs)),
     app: run.length === 1 ? run[0].app : "multiple",
-    minutes: round1(totalMs / 60000),
+    minutes,
     active_minutes: round1((totalMs - idleMs) / 60000),
     idle_minutes: round1(idleMs / 60000),
-    titles: titles.filter((title) => title.trim().length > 0).slice(0, MAX_TITLES),
-    ...(text.length > 0 ? { text: text.slice(0, MAX_TEXT_CHARS) } : {}),
+    titles: titles.slice(0, MAX_TITLES),
+    ...(text.length > 0 ? { text } : {}),
   };
+}
+
+/**
+ * The block's screen text, within `budget` characters: drawn from its first, middle and
+ * last snapshots so a long block is read across its length, each cleaned of interface
+ * lines (`cleanText`), and without any line already sent for the same thread earlier in
+ * the candidate — a conversation on screen for an hour repeats itself in every snapshot,
+ * and only what changed says anything new.
+ */
+function blockText(run: Piece[], budget: number, sent: Map<string, Set<string>>): string {
+  const snaps: { piece: Piece; text: string }[] = [];
+  for (const p of run) for (const snap of p.contents) snaps.push({ piece: p, text: snap.text });
+  if (snaps.length === 0) return "";
+  const picks =
+    snaps.length <= TEXT_SAMPLES
+      ? snaps
+      : [...new Set([0, Math.floor((snaps.length - 1) / 2), snaps.length - 1])].map((index) => snaps[index]);
+
+  const out: string[] = [];
+  let used = 0;
+  picks.forEach((pick, n) => {
+    // Each pick gets an even share of what is left, so an early snapshot cannot take it all.
+    const share = Math.floor((budget - used) / (picks.length - n));
+    let taken = 0;
+    const seen = sent.get(pick.piece.thread.key) ?? new Set<string>();
+    sent.set(pick.piece.thread.key, seen);
+    for (const line of cleanText(pick.piece.app, pick.piece.windowTitle, pick.piece.thread.name, pick.text).split("\n")) {
+      if (!line || seen.has(line)) continue;
+      const room = share - taken;
+      if (room < 12) break;
+      const piece = line.length > room ? `${line.slice(0, room - 1)}…` : line;
+      seen.add(line);
+      out.push(piece);
+      taken += piece.length + 1;
+    }
+    used += taken;
+  });
+  return out.join(" ").replace(/\s+/g, " ").trim();
 }
 
 export function toChunkInput(candidates: AmbientCandidate[], projects: AmbientProject[], afkThresholdS: number): ChunkPromptInput {
@@ -446,12 +545,23 @@ export function toChunkInput(candidates: AmbientCandidate[], projects: AmbientPr
       .filter((c) => c.llm)
       .map((c) => ({
         index: c.index,
-        from: c.from,
-        to: c.to,
+        from: clockOf(c.from),
+        to: clockOf(c.to),
         minutes: c.minutes,
         active_minutes: c.activeMinutes,
         idle_minutes: c.idleMinutes,
-        blocks: c.blocks,
+        blocks: c.blocks.map(
+          (block, i): ChunkPromptBlock => ({
+            i,
+            from: clockOf(block.from),
+            to: clockOf(block.to),
+            app: block.app,
+            min: block.minutes,
+            idle: block.idle_minutes,
+            titles: block.titles,
+            ...(block.text ? { text: block.text } : {}),
+          }),
+        ),
       })),
   };
 }
@@ -476,10 +586,27 @@ export type ChunkPart = {
   split?: ChunkSplit[];
 };
 
+/** A run of blocks inside one part that belonged to another project, as the model names it: by block number. */
+export type ModelSplit = { project: string; first_block: number; last_block: number };
+
+/** One part as the model returns it: blocks by number, never times. */
+export type ModelPart = {
+  first_block: number;
+  last_block: number;
+  label: string;
+  project: string;
+  what: string;
+  evidence: string[];
+  unclear: boolean;
+  split?: ModelSplit[];
+};
+
 /**
- * Every part boundary must be a real block edge inside this candidate, and the parts must
- * be in order without overlapping. A hallucinated time can never widen a stretch across
- * hours nobody worked: anything not matching a block edge rejects the whole candidate,
+ * Every part must name blocks of this candidate, in order, without overlapping. The model
+ * answers with block numbers, so it cannot quote a time that is not a real edge — it used
+ * to, by a few seconds, and lose a whole stretch to the rejection. A number past the end is
+ * read as the last block (an off-by-one, not a claim about hours nobody worked); a part
+ * that runs backwards, or a number that is not a block at all, rejects the candidate,
  * which falls back to one unlabelled chunk.
  *
  * Skipped blocks are tolerated, because the model reliably drops a thirty-second block at
@@ -488,36 +615,56 @@ export type ChunkPart = {
  * the first part, at the start), so the parts always tile the candidate exactly and every
  * boundary is still one the collector measured.
  */
-export function validateParts(candidate: AmbientCandidate, parts: ChunkPart[], projectKeys: Set<string>): ChunkPart[] | null {
-  if (parts.length === 0) return null;
+export function validateParts(candidate: AmbientCandidate, modelParts: ModelPart[], projectKeys: Set<string>): ChunkPart[] | null {
+  if (modelParts.length === 0) return null;
   const blocks = candidate.blocks;
+  if (blocks.length === 0) return null;
   const froms = new Map(blocks.map((block, i) => [block.from, i]));
   const tos = new Map(blocks.map((block, i) => [block.to, i]));
 
-  // A boundary may be given as either edge of the block it sits on: a part that "ends" at
-  // 16:06:47 where a block *starts* at 16:06:47 means the same instant, and rejecting the
-  // day over which edge the model quoted would be pedantry.
-  const resolveFirst = (from: string): number | undefined => {
-    const at = froms.get(from);
-    if (at !== undefined) return at;
-    const before = tos.get(from);
-    return before === undefined ? undefined : before + 1;
+  /** A block number, or undefined when it names no block. */
+  const blockAt = (value: unknown): number | undefined => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+    const at = Math.round(value);
+    if (at < 0) return undefined;
+    return Math.min(at, blocks.length - 1);
   };
-  const resolveLast = (to: string): number | undefined => {
-    const at = tos.get(to);
-    if (at !== undefined) return at;
-    const after = froms.get(to);
-    return after === undefined ? undefined : after - 1;
-  };
-
   type Span = { first: number; last: number; part: ChunkPart };
+  // Internally a part keeps the edges of the blocks it names, which is what the cache stores.
   const resolved: Span[] = [];
-  for (const part of parts) {
-    const first = resolveFirst(part.from);
-    const last = resolveLast(part.to);
-    if (first === undefined || last === undefined || last < first || first >= blocks.length) return null;
-    resolved.push({ first, last, part });
+  for (const part of modelParts) {
+    const first = blockAt(part.first_block);
+    const last = blockAt(part.last_block);
+    if (first === undefined || last === undefined || last < first) return null;
+    const split: ChunkSplit[] = [];
+    let splitValid = true;
+    for (const entry of part.split ?? []) {
+      const a = blockAt(entry.first_block);
+      const b = blockAt(entry.last_block);
+      if (a === undefined || b === undefined || b < a) {
+        splitValid = false;
+        break;
+      }
+      split.push({ project: entry.project, from: blocks[a].from, to: blocks[b].to });
+    }
+    resolved.push({
+      first,
+      last,
+      part: {
+        from: blocks[first].from,
+        to: blocks[last].to,
+        label: part.label ?? "",
+        project: part.project,
+        what: part.what ?? "",
+        evidence: Array.isArray(part.evidence) ? part.evidence : [],
+        unclear: Boolean(part.unclear),
+        ...(splitValid && split.length > 0 ? { split } : {}),
+      },
+    });
   }
+
+  const resolveFirst = (from: string): number | undefined => froms.get(from);
+  const resolveLast = (to: string): number | undefined => tos.get(to);
   resolved.sort((a, b) => a.first - b.first);
 
   // Overlaps drop the later part rather than the day.
@@ -784,7 +931,7 @@ export function measureSpan(day: AmbientDayMeasure, fromMs: number, toMs: number
     const endMs = Math.min(iv.endMs, toMs);
     if (endMs <= startMs) continue;
     totalMs += endMs - startMs;
-    idleMs += iv.estimated ? estimatedTail(iv, startMs, endMs) : overlapMs(startMs, endMs, day.idle);
+    idleMs += idleWithin(iv, startMs, endMs, day.idle);
   }
   return {
     minutes: round1(totalMs / 60000),
@@ -832,12 +979,12 @@ export const CHUNK_SCHEMA = {
             items: {
               type: "object",
               properties: {
-                from: { type: "string", description: "The `from` of the first block in this part, copied exactly from the input." },
-                to: { type: "string", description: "The `to` of the last block in this part, copied exactly from the input." },
+                first_block: { type: "integer", description: "The `i` of the first block in this part." },
+                last_block: { type: "integer", description: "The `i` of the last block in this part." },
                 label: {
                   type: "string",
                   description:
-                    "One plain past-tense sentence, up to about twenty words, saying what the person was doing across this part. It may name two or three things when the part held them: \"Mostly the website landing page, with some thesis reading and a look at a job posting\". Name the work, not the software. No praise, no judgement, no advice, no second person.",
+                    "One plain past-tense sentence, up to about twenty words, saying what the person was doing across this part. It may name two or three things when the part held them: \"Mostly the website landing page, with some thesis reading and a look at a job posting\". Name the work, not the software: never name an app, a browser or an AI assistant, and never say the work was done \"with\" one. No praise, no judgement, no advice, no second person.",
                 },
                 project: {
                   type: "string",
@@ -864,15 +1011,15 @@ export const CHUNK_SCHEMA = {
                     type: "object",
                     properties: {
                       project: { type: "string", description: "A key from `projects`, or one of the `buckets` keys." },
-                      from: { type: "string", description: "The `from` of the first block of this run, copied exactly from the input." },
-                      to: { type: "string", description: "The `to` of the last block of this run, copied exactly from the input." },
+                      first_block: { type: "integer", description: "The `i` of the first block of this run." },
+                      last_block: { type: "integer", description: "The `i` of the last block of this run." },
                     },
-                    required: ["project", "from", "to"],
+                    required: ["project", "first_block", "last_block"],
                     additionalProperties: false,
                   },
                 },
               },
-              required: ["from", "to", "label", "project", "what", "evidence", "unclear"],
+              required: ["first_block", "last_block", "label", "project", "what", "evidence", "unclear"],
               additionalProperties: false,
             },
           },
@@ -892,11 +1039,13 @@ saying which of their projects each stretch belonged to.
 The input has three parts. "projects" is the person's own list: a key, a name, a description
 they wrote, and hints — words, titles and paths that mark that project's work. "buckets" are
 the fixed places for time that belongs to no project. "candidates" is the day, already cut
-into continuous stretches at its natural breaks: each one is a list of blocks in order, and
-each block is one window that held focus — when it started and ended, the app, the minutes,
-how many of those minutes counted as worked ("active_minutes") and how many as idle
-("idle_minutes"), the window titles, and often "text": real text read off the screen at that
-moment via the OS accessibility API, not a screenshot.
+into continuous stretches at its natural breaks: each one is a list of numbered blocks in
+order. A block is one thing that held focus: "i" is its number, "from" and "to" are local
+clock times, "app" is the program, "min" its minutes and "idle" how many of those minutes
+counted as idle. "titles" names what was open — the window title, or for an app whose title
+never changes, the conversation or document inside it. "text", when present, is real text
+read off the screen during the block via the OS accessibility API, not a screenshot, with the
+interface around it removed and lines already shown earlier in the stretch left out.
 
 Idle is measured, not guessed: a person counts as idle once "afk_threshold_minutes" pass with
 no keyboard or mouse input, from the last input until the next. So a block that ran long
@@ -918,14 +1067,14 @@ every switch. Split a candidate only when the dominant project clearly changed p
 through and each side is at least thirty minutes — a morning that was two hours on one
 project and then ninety minutes on another is two parts; a morning that flitted between
 them is one part with a compound sentence. Never merge across candidates and never move a
-boundary outside one. Copy "from" and "to" exactly from the first and last block of each part.
-Every block must fall inside exactly one part.
+boundary outside one. Name each part by its blocks: "first_block" and "last_block" are the
+"i" of its first and last block. Every block must fall inside exactly one part.
 
 A part keeps one project — the one that held most of its time — and a sentence that may name
 the rest. When the rest was a real amount of time rather than a few minutes' detour, give
 "split" as well: one entry per run of consecutive blocks that belonged to a project other
-than the part's own, each with that project's key and "from" and "to" copied from block edges
-inside the part, in order and not overlapping. So an hour on one project with twenty minutes
+than the part's own, each with that project's key and the "i" of the run's first and last
+block, inside the part, in order and not overlapping. So an hour on one project with twenty minutes
 of another in the middle of it is one part, one sentence naming both, and one split entry for
 the twenty minutes. Leave "split" out when the part was one project throughout, which is the
 usual case. Never state a number of minutes anywhere: minutes are measured from the blocks,
@@ -934,7 +1083,9 @@ and a split only says where the boundaries were.
 The label is one plain sentence, past tense, up to about twenty words. It may be compound
 when the stretch held several things: "Mostly the website landing page, with some thesis reading
 and a look at flights". Lead with what took the most time. Name the work rather than the
-tool: "Filed expense receipts", never "Used a browser". Do not score, grade, praise or advise.
+tool: "Filed expense receipts", never "Used a browser". An AI assistant the person works
+through is a tool too: name what the conversation was about, never the assistant — "Worked
+through the regression exercises", not "Discussed the exercises with an assistant". Do not score, grade, praise or advise.
 Do not address the person. Do not speculate about why the work was done or who asked for it;
 the screen shows what was open, not intent.
 

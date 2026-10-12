@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { projectTotals, type AmbientChunk } from "@/lib/ambient/chunks";
+import { dayFocus } from "@/lib/ambient/focus";
+import { attachThreads, dayThreadTotals, threadTotals, type AmbientThreadLine } from "@/lib/ambient/threads";
 import type { AmbientWeekDay, AmbientWeekResponse } from "@/lib/ambient/types";
 import { readChunkCache } from "../chunkCache";
 import { loadConfig } from "../config";
@@ -33,6 +35,9 @@ export async function GET(request: Request) {
     const dates = Array.from({ length: WINDOW_DAYS }, (_, i) => shiftDays(from, i));
 
     const allChunks: AmbientChunk[] = [];
+    // Threads of every observed day: from the labelled chunks where there are some, so they
+    // carry a project, and straight off the day where nobody has labelled it.
+    const threadSources: { threads: AmbientThreadLine[] }[] = [];
     let unlabelledMinutes = 0;
     const { config } = await loadConfig();
     const [projects, days] = await Promise.all([
@@ -42,9 +47,17 @@ export async function GET(request: Request) {
           const [day, cache] = await Promise.all([loadDay(date, config.afkSeconds), readChunkCache(date)]);
           if (!day || day.measure.intervals.length === 0) return { date, observed: false };
           const totals = day.edited.totals;
-          const chunks = cache ? withEdits(cache.chunks, day, config.breakMinutes) : null;
-          if (chunks) allChunks.push(...chunks);
-          else unlabelledMinutes += totals.trackedMinutes;
+          const chunks = cache ? attachThreads(withEdits(cache.chunks, day, config.breakMinutes), day.edited) : null;
+          if (chunks) {
+            allChunks.push(...chunks);
+            threadSources.push(...chunks);
+          } else {
+            unlabelledMinutes += totals.trackedMinutes;
+            threadSources.push({
+              threads: dayThreadTotals(day.edited, Number.POSITIVE_INFINITY).map((total) => ({ ...total, project: "" })),
+            });
+          }
+          const focus = dayFocus(day.edited);
           return {
             date,
             observed: true,
@@ -55,6 +68,15 @@ export async function GET(request: Request) {
             estimatedIdle: totals.estimatedIdle,
             labelled: chunks !== null,
             projects: chunks ? projectTotals(chunks) : [],
+            activeByHour: focus.activeByHour,
+            focus: {
+              firstActiveAt: focus.firstActiveAt,
+              lastActiveAt: focus.lastActiveAt,
+              switchesPerHour: focus.switchesPerHour,
+              glanceShare: focus.glanceShare,
+              meetingMinutes: focus.meetingMinutes,
+              videoMinutes: focus.videoMinutes,
+            },
           };
         }),
       ),
@@ -69,6 +91,7 @@ export async function GET(request: Request) {
       projects: projectTotals(allChunks),
       unlabelledMinutes: Math.round(unlabelledMinutes * 10) / 10,
       projectNames: Object.fromEntries(projects.file.projects.map((p) => [p.key, p.name])),
+      threads: threadTotals(threadSources),
     } satisfies AmbientWeekResponse);
   } catch (error) {
     return NextResponse.json({

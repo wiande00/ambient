@@ -10,6 +10,7 @@ import { DayBand } from "./DayBand";
 import { OffComputerControl } from "./OffComputerControl";
 import { GAP_FILL, HATCH, IDLE_FILL, projectPalette } from "./palette";
 import { ProjectList, projectLabel } from "./ProjectList";
+import { RhythmRow, ThreadTotals } from "./Rhythm";
 import { useIsDesktop } from "./useDesktop";
 
 /**
@@ -105,6 +106,8 @@ export function DayScreen({
             <Figure value={formatDuration(day.totals.awayMinutes)} caption={t.day.away} tone="var(--ink-4)" />
           </Figures>
 
+          <RhythmRow focus={day.focus} chunks={ready?.chunks ?? []} names={names} />
+
           {day.totals.estimatedIdle ? (
             <span style={{ fontSize: 13, color: "var(--ink-4)", maxWidth: "72ch", lineHeight: "var(--leading-body)", marginTop: -20 }}>
               {t.day.estimatedNote}
@@ -144,6 +147,7 @@ export function DayScreen({
                 note={ready?.projectsError ? interpolate(t.projects.fileError, { message: ready.projectsError }) : null}
               />
               {!viewingPast ? <OffComputerControl onChanged={onChanged} refreshKey={refreshKey} /> : null}
+              {ready ? <ThreadTotals heading={t.rhythm.threadsHeading} threads={ready.threads ?? []} fillFor={fillFor} /> : null}
             </div>
           </div>
         </>
