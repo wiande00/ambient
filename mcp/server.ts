@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { longestProjectStretch, type AmbientFocus } from "../src/lib/ambient/focus";
 import { keyForName, FALLBACK_BUCKETS, type AmbientProject } from "../src/lib/ambient/projects";
 import type {
   AmbientChunksResponse,
@@ -11,6 +12,7 @@ import type {
   AmbientEditsResponse,
   AmbientOffComputerResponse,
   AmbientProjectsResponse,
+  AmbientSearchResponse,
   AmbientSettingsResponse,
   AmbientWeekResponse,
 } from "../src/lib/ambient/types";
@@ -122,9 +124,35 @@ function instantOn(day: string, value: string): string | null {
 
 type ReadyChunks = Extract<AmbientChunksResponse, { status: "ready" }>;
 
+/** Threads per chunk handed to Claude: enough to see what a stretch held, not a log of it. */
+const THREADS_PER_CHUNK = 5;
+
+/** A thread line as the connector shows it: the conversation, page or document, its app, and its minutes. */
+function describeThread(line: { name: string; kind: string; app: string; minutes: number; activeMinutes: number }) {
+  return { name: line.name, kind: line.kind, app: line.app.toLowerCase(), minutes: round(line.minutes), activeMinutes: round(line.activeMinutes) };
+}
+
+/** The day's rhythm as the connector shows it: times as local clock times, the hours as a sparse map. */
+function describeFocus(focus: AmbientFocus) {
+  const hhmm = (iso: string | null) => (iso ? iso.slice(11, 16) : null);
+  return {
+    firstActive: hhmm(focus.firstActiveAt),
+    lastActive: hhmm(focus.lastActiveAt),
+    switchesPerActiveHour: focus.switchesPerHour,
+    shareOfActiveTimeInGlancesUnder2Min: focus.glanceShare,
+    meetingMinutes: round(focus.meetingMinutes),
+    videoMinutes: round(focus.videoMinutes),
+    longestOnOneThing: focus.longestThread
+      ? { name: focus.longestThread.name, from: hhmm(focus.longestThread.from), to: hhmm(focus.longestThread.to), activeMinutes: round(focus.longestThread.activeMinutes) }
+      : null,
+    activeMinutesByHour: Object.fromEntries(focus.activeByHour.flatMap((minutes, hour) => (minutes >= 1 ? [[`${String(hour).padStart(2, "0")}:00`, round(minutes)]] : []))),
+  };
+}
+
 function describeChunks(chunks: ReadyChunks) {
   const name = (key: string) => (key in BUCKETS ? BUCKETS[key as keyof typeof BUCKETS] : (chunks.projectNames[key] ?? key));
-  return chunks.chunks.map((c) => ({
+  // A stretch of a few seconds that nothing labelled is a window flashing up, not something done.
+  return chunks.chunks.filter((c) => !(c.label === null && c.minutes < 0.5)).map((c) => ({
     from: c.from,
     to: c.to,
     minutes: round(c.minutes),
@@ -147,6 +175,8 @@ function describeChunks(chunks: ReadyChunks) {
     unclear: c.unclear || undefined,
     editedByYou: c.edit ? true : undefined,
     countedAsActive: c.edit?.active || undefined,
+    // Measured, not labelled: the conversations, pages and documents the stretch held.
+    heldMostly: c.threads?.length ? c.threads.filter((t) => !t.rest && t.minutes >= 1).slice(0, THREADS_PER_CHUNK).map(describeThread) : undefined,
   }));
 }
 
@@ -176,14 +206,14 @@ function stretch(requested: string | undefined, from: string, to: string): { day
   return { day, from: fromIso, to: toIso };
 }
 
-const server = new McpServer({ name: "ambient", version: "0.4.0" });
+const server = new McpServer({ name: "ambient", version: "0.5.0" });
 
 server.registerTool(
   "get_day",
   {
     title: "Get a day",
     description:
-      "Where the hours went on one day: tracked, active, idle and away minutes; the day cut into chunks, each with a plain sentence, the project it belonged to and its measured minutes; and active minutes per project. Labels come from the model and may still be pending for today. Chunks the person corrected are marked editedByYou; stretches they took out are listed under removedByYou.",
+      "Where the hours went on one day: tracked, active, idle and away minutes; the day cut into chunks, each with a plain sentence, the project it belonged to, its measured minutes and the conversations, pages and documents it mostly held; active minutes per project; the day's top threads; and its rhythm (first and last active time, switches per hour, share of time in glances, the longest stretch on one project, active minutes by hour). Labels come from the model and may still be pending for today; everything else is measured. Chunks the person corrected are marked editedByYou; stretches they took out are listed under removedByYou.",
     inputSchema: { date },
   },
   async ({ date: requested }) => {
@@ -230,6 +260,20 @@ server.registerTool(
         chunks.status === "ready"
           ? chunks.projects.map((p) => ({ project: p.project, name: name(p.project), activeMinutes: round(p.activeMinutes), idleMinutes: round(p.idleMinutes) }))
           : [],
+      topThreads:
+        chunks.status === "ready"
+          ? (chunks.threads ?? []).filter((t) => t.minutes >= 1).map((t) => ({ ...describeThread(t), project: t.project, projectName: t.project ? name(t.project) : undefined }))
+          : undefined,
+      rhythm: {
+        // An older dashboard (the connector can outlive an update by a moment) has no rhythm.
+        ...(day.focus ? describeFocus(day.focus) : {}),
+        longestOnOneProject: (() => {
+          const stretch = chunks.status === "ready" ? longestProjectStretch(chunks.chunks) : null;
+          return stretch
+            ? { project: stretch.project, name: name(stretch.project), from: stretch.from.slice(11, 16), to: stretch.to.slice(11, 16), activeMinutes: round(stretch.activeMinutes) }
+            : null;
+        })(),
+      },
       projectsFileError: chunks.status === "ready" ? (chunks.projectsError ?? undefined) : undefined,
       labellingSpend:
         chunks.status === "ready" && chunks.usage
@@ -243,7 +287,8 @@ server.registerTool(
   "get_week",
   {
     title: "Get a week",
-    description: "The Monday-to-Sunday week containing the given date (default today): per-day tracked, active, idle and away minutes, plus active minutes per project across the days that have been labelled.",
+    description:
+      "The Monday-to-Sunday week containing the given date (default today): per-day tracked, active, idle and away minutes with each day's rhythm (first and last active time, switches per hour, share of time in glances, meeting and video minutes), active minutes per project across the days that have been labelled, and the week's top conversations, pages and documents.",
     inputSchema: { date },
   },
   async ({ date: requested }) => {
@@ -263,11 +308,50 @@ server.registerTool(
               idle: round(d.idleMinutes),
               away: round(d.awayMinutes),
               labelled: d.labelled,
+              rhythm: d.focus
+                ? {
+                    firstActive: d.focus.firstActiveAt?.slice(11, 16) ?? null,
+                    lastActive: d.focus.lastActiveAt?.slice(11, 16) ?? null,
+                    switchesPerActiveHour: d.focus.switchesPerHour,
+                    shareOfActiveTimeInGlancesUnder2Min: d.focus.glanceShare,
+                    meetingMinutes: round(d.focus.meetingMinutes),
+                    videoMinutes: round(d.focus.videoMinutes),
+                  }
+                : undefined,
             }
           : { date: d.date, tracked: 0, observed: false },
       ),
       byProject: week.projects.map((p) => ({ project: p.project, name: name(p.project), activeMinutes: round(p.activeMinutes) })),
       unlabelledMinutes: round(week.unlabelledMinutes),
+      topThreads: (week.threads ?? []).filter((t) => t.minutes >= 1).map((t) => ({ ...describeThread(t), project: t.project, projectName: t.project ? name(t.project) : undefined })),
+    });
+  },
+);
+
+server.registerTool(
+  "search_time",
+  {
+    title: "Search where time went",
+    description:
+      "How much time went to anything matching a query, across days: a course, a document, a conversation, a site, a project or a word from the day's sentences. Every word of the query must match, ignoring case. Returns total and active minutes, minutes per day (newest first), the matching conversations, pages and documents, and up to 20 matching labelled stretches. Measured from the logs; never calls the model.",
+    inputSchema: {
+      query: z.string().min(1).describe("Words to look for, e.g. \"thesis\", \"report draft\" or a site name."),
+      days: z.number().int().min(1).max(366).optional().describe("How many days back to look, today included. Default 30."),
+    },
+  },
+  async ({ query, days }) => {
+    const params = new URLSearchParams({ q: query, ...(days ? { days: String(days) } : {}) });
+    const found = await api<AmbientSearchResponse>(`/api/ambient/search?${params}`);
+    if (found.status !== "ready") return fail(found.message);
+    const name = (key: string) => (key in BUCKETS ? BUCKETS[key as keyof typeof BUCKETS] : (found.projectNames[key] ?? key));
+    return text({
+      query: found.query,
+      searched: { from: found.from, to: found.to, daysWithData: found.daysSearched },
+      minutes: round(found.minutes),
+      activeMinutes: round(found.activeMinutes),
+      byDay: found.byDay.map((d) => ({ date: d.date, minutes: round(d.minutes), activeMinutes: round(d.activeMinutes) })),
+      threads: found.threads.map((t) => ({ ...describeThread(t), project: t.project, projectName: t.project ? name(t.project) : undefined })),
+      stretches: found.stretches.map((s) => ({ date: s.date, from: s.from.slice(11, 16), to: s.to.slice(11, 16), project: name(s.project), sentence: s.label, what: s.what || undefined, matchedMinutes: round(s.minutes) })),
     });
   },
 );
