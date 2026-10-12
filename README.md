@@ -21,13 +21,18 @@ away time.
 - **Automatic.** Starts when you sign in and runs quietly in the tray. No timers to start.
 - **Labelled by Claude.** Each stretch of the day gets a past-tense sentence and a project,
   with a per-project *ledger* so the minutes are exact even when the sentence is coarse.
+- **What each stretch held.** Under every stretch, the conversations, pages and documents it
+  was spent on, to the minute — read straight off the windows, with no API call and no key.
+- **Rhythm.** When the day started and stopped, the longest stretch on one project, switches
+  per hour, how much came in glances, time on calls and video, and the week hour by hour.
 - **Honest numbers.** Active, idle and away time are measured, not guessed; breaks are
   shown as breaks.
 - **Correctable.** Edit, add or delete any stretch; your edits sit on top of what was
   measured and never cost another API call.
 - **Off-computer time.** A switch for pen-and-paper work the screen cannot see.
 - **Works with Claude.** Ships an MCP server so Claude Desktop or Claude Code can read your
-  days, correct them and keep your projects list.
+  days, search where the time went on anything ("how long on the thesis this month?"),
+  correct days and keep your projects list.
 - **Local-first.** Everything it records stays in `~/.ambient/` on your machine. See
   [Privacy](#privacy) for exactly what is sent to Claude.
 - **Self-updating.** Checks this repository's releases and verifies each installer's SHA-512.
@@ -55,7 +60,10 @@ If Ambient is useful to you, a ⭐ on this repository helps other people find it
 - **Anthropic API key.** Open **Settings** and paste a key from
   [console.anthropic.com](https://console.anthropic.com/) → *API Keys*. Without one every
   measured figure still shows; only the sentences and project colours are missing. Labelling
-  a day costs a few cents at most, and a finished day is cached and never paid for twice.
+  runs on Claude Haiku 5.5 and a whole day usually costs a few US cents or less — around
+  half a cent once it has finished — and a finished day is cached and never paid for twice.
+  A stretch Haiku 5.5 declines to label (its safety checks can trip on, say, exploit code
+  from a security course on screen) is retried once on Claude Haiku 4.5, at its higher rate.
 - **Projects.** In **Settings › Projects**, add the things you work on, each with a short
   description and a few *hints* — words, window titles or paths that mark that project's
   work. Anything that fits no project lands in *other*.
@@ -136,6 +144,17 @@ Four parts ship as one Windows app:
   project with twenty minutes of another inside it reads as one stretch and still puts twenty
   minutes where they belong; the card says *also Thesis 20 min* under the sentence. The story
   is coarse and the ledger is exact, which is the whole point of keeping them apart.
+- **What it held.** Each card opens into its *threads*: the conversations, pages and
+  documents the stretch was spent on, with their minutes and the project they counted
+  under. A thread is read from the window — a browser tab's title, or for an app whose title
+  never changes (the Claude desktop app is titled "Claude" whatever is open), the name it
+  shows for the open conversation. Measured, not labelled, so it works on every past day and
+  without an API key. *What held the day* lists the longest threads beside the cards.
+- **Rhythm.** A row under the headline figures: first and last active moment, the longest
+  stretch on one project, switches between threads per active hour (passing through a window
+  for under ten seconds does not count), the share of active time spent in threads held under
+  two minutes, and time on calls and on video. Figures, not a grade. The week screen adds the
+  week hour by hour, and the week's longest threads.
 
 ## Working off the computer
 
@@ -240,9 +259,14 @@ so a server started from there needed Claude Desktop restarted after every updat
 `~/.ambient/mcp/` it keeps running: tools answer "Ambient is not running" while the update
 installs, then work again.
 
-Tools: `get_day`, `get_week`, `list_days`, `list_projects`, `add_project`, `update_project`,
-`remove_project`, `start_off_computer`, `stop_off_computer`, `edit_chunk`, `add_chunk`,
-`delete_chunk`, `undo_chunk_edits`, `get_status`.
+Tools: `get_day`, `get_week`, `search_time`, `list_days`, `list_projects`, `add_project`,
+`update_project`, `remove_project`, `start_off_computer`, `stop_off_computer`, `edit_chunk`,
+`add_chunk`, `delete_chunk`, `undo_chunk_edits`, `get_status`.
+
+`get_day` and `get_week` include each stretch's threads (conversation, page and document
+names) and the day's rhythm; `search_time` totals the time on anything matching a few words
+across days, from the threads and the sentences. All of it is measured on this machine; the
+MCP client you connect (Claude Desktop, Claude Code) sees those names when it calls a tool.
 
 ### Configuring it
 
@@ -291,6 +315,7 @@ Everything is under `~/.ambient/`:
 | `edits.json` | Your corrections to chunks |
 | `offcomputer.json` | *Working off computer* sessions |
 | `chunks/` | Cached labels, keyed to the exact model input |
+| `digest/` | Each finished day's stretches and threads, small, for search; rebuilt whenever the day changes, safe to delete |
 | `logs/` | Logs for the shell, the server and the collector |
 | `updates/` | Downloaded installers waiting to be installed |
 | `mcp/` | The runtime Claude runs the MCP server with, once the connector is in use; safe to delete (it is set up again) |
