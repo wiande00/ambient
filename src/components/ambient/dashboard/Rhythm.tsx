@@ -1,6 +1,7 @@
 import { clock, formatDuration } from "@/lib/ambient/format";
 import { longestProjectStretch, type AmbientFocus } from "@/lib/ambient/focus";
 import type { AmbientChunk } from "@/lib/ambient/chunks";
+import type { AmbientDayShape } from "@/lib/ambient/shape";
 import type { AmbientThreadTotal } from "@/lib/ambient/threads";
 import { en } from "@/i18n/en";
 import { interpolate } from "@/i18n";
@@ -19,19 +20,21 @@ const t = en.ambient.rhythm;
 /** A row of small figures under the day's headline ones. Figures with nothing to say are left out. */
 export function RhythmRow({
   focus,
+  shape,
+  leftOnMinutes,
   chunks,
   names,
 }: {
   focus: AmbientFocus;
+  shape: AmbientDayShape;
+  leftOnMinutes: number;
   chunks: AmbientChunk[];
   names: Record<string, string>;
 }) {
   const stretch = longestProjectStretch(chunks);
-  const items: { value: string; caption: string; hint?: string }[] = [];
-  if (focus.firstActiveAt && focus.lastActiveAt) {
-    items.push({ value: clock(focus.firstActiveAt), caption: t.started });
-    items.push({ value: clock(focus.lastActiveAt), caption: t.stopped });
-  }
+  const items: { value: string; caption: string; hint?: string; quiet?: boolean }[] = [];
+  // The day's start and end are the span figure above; density says how much of it was worked.
+  if (shape.density !== null) items.push({ value: `${Math.round(shape.density * 100)}%`, caption: t.density, hint: t.densityHint });
   if (stretch && stretch.activeMinutes >= 1) {
     items.push({
       value: formatDuration(stretch.activeMinutes),
@@ -49,13 +52,15 @@ export function RhythmRow({
   if (focus.glanceShare !== null) items.push({ value: `${Math.round(focus.glanceShare * 100)}%`, caption: t.glances, hint: t.glancesHint });
   if (focus.meetingMinutes >= 1) items.push({ value: formatDuration(focus.meetingMinutes), caption: t.calls });
   if (focus.videoMinutes >= 1) items.push({ value: formatDuration(focus.videoMinutes), caption: t.video });
+  // Said once, quietly, so the hours that left the totals are not simply gone.
+  if (leftOnMinutes >= 1) items.push({ value: formatDuration(leftOnMinutes), caption: t.leftOn, hint: t.leftOnHint, quiet: true });
   if (items.length === 0) return null;
 
   return (
     <dl style={{ display: "flex", flexWrap: "wrap", gap: "14px 32px", margin: "-14px 0 0" }}>
       {items.map((item) => (
         <div key={item.caption} title={item.hint} style={{ display: "flex", flexDirection: "column", gap: 2, cursor: item.hint ? "help" : undefined }}>
-          <dd className="ui-mono" style={{ margin: 0, fontSize: 15, color: "var(--ink-2)" }}>
+          <dd className="ui-mono" style={{ margin: 0, fontSize: 15, color: item.quiet ? "var(--ink-4)" : "var(--ink-2)" }}>
             {item.value}
           </dd>
           <dt style={{ fontSize: 12, color: "var(--ink-4)" }}>{item.caption}</dt>

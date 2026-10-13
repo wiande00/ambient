@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { projectTotals, type AmbientChunk } from "@/lib/ambient/chunks";
+import { daySegments, projectTotals, type AmbientChunk } from "@/lib/ambient/chunks";
+import { dayShape, leftOnRanges, leftOnThreshold, markLeftOn, withoutLeftOn } from "@/lib/ambient/shape";
 import { dayFocus } from "@/lib/ambient/focus";
 import { attachThreads, dayThreadTotals, threadTotals, type AmbientThreadLine } from "@/lib/ambient/threads";
 import type { AmbientWeekDay, AmbientWeekResponse } from "@/lib/ambient/types";
@@ -46,7 +47,11 @@ export async function GET(request: Request) {
         dates.map(async (date): Promise<AmbientWeekDay> => {
           const [day, cache] = await Promise.all([loadDay(date, config.afkSeconds), readChunkCache(date)]);
           if (!day || day.measure.intervals.length === 0) return { date, observed: false };
-          const totals = day.edited.totals;
+          // Left-on time out of idle and tracked, as on the day screen; the cut is untouched.
+          const threshold = leftOnThreshold(config.breakMinutes);
+          const leftOn = leftOnRanges(day.edited, threshold);
+          const totals = withoutLeftOn(day.edited, leftOn);
+          const shape = dayShape(markLeftOn(daySegments(day.edited, config.breakMinutes), leftOn), totals.activeMinutes, threshold);
           const chunks = cache ? attachThreads(withEdits(cache.chunks, day, config.breakMinutes), day.edited) : null;
           if (chunks) {
             allChunks.push(...chunks);
@@ -77,6 +82,8 @@ export async function GET(request: Request) {
               meetingMinutes: focus.meetingMinutes,
               videoMinutes: focus.videoMinutes,
             },
+            leftOnMinutes: totals.leftOnMinutes,
+            shape,
           };
         }),
       ),

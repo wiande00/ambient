@@ -100,13 +100,35 @@ export function DayScreen({
         <EmptyDay isToday={!viewingPast} />
       ) : (
         <>
+          {/* Active, the breaks inside the day, and the span from first stretch to last: three
+              figures that compare between days whether or not the machine was left on. Raw
+              idle and away are not among them — on a day the computer stayed on they were
+              mostly the computer, not the person. */}
           <Figures>
             <Figure value={formatDuration(day.totals.activeMinutes)} caption={t.day.active} lead />
-            <Figure value={formatDuration(day.totals.idleMinutes)} caption={t.day.idle} tone="var(--ink-3)" />
-            <Figure value={formatDuration(day.totals.awayMinutes)} caption={t.day.away} tone="var(--ink-4)" />
+            <Figure
+              value={formatDuration(day.shape.breaks.minutes)}
+              caption={
+                day.shape.breaks.count === 0
+                  ? t.day.breaksNone
+                  : day.shape.breaks.count === 1
+                    ? t.day.breaksOne
+                    : interpolate(t.day.breaks, { count: day.shape.breaks.count })
+              }
+              hint={t.day.breaksHint}
+              tone="var(--ink-3)"
+            />
+            {day.shape.span ? (
+              <Figure
+                value={formatDuration(day.shape.span.minutes)}
+                caption={interpolate(t.day.spanRange, { from: clock(day.shape.span.from), to: clock(day.shape.span.to) })}
+                hint={t.day.spanHint}
+                tone="var(--ink-4)"
+              />
+            ) : null}
           </Figures>
 
-          <RhythmRow focus={day.focus} chunks={ready?.chunks ?? []} names={names} />
+          <RhythmRow focus={day.focus} shape={day.shape} leftOnMinutes={day.totals.leftOnMinutes} chunks={ready?.chunks ?? []} names={names} />
 
           {day.totals.estimatedIdle ? (
             <span style={{ fontSize: 13, color: "var(--ink-4)", maxWidth: "72ch", lineHeight: "var(--leading-body)", marginTop: -20 }}>
@@ -219,9 +241,9 @@ export function Figures({ children }: { children: ReactNode }) {
  * One figure. `lead` is the one the screen is about — active time — and it is set nearly
  * half again as large as the other two, because the difference between them is the point.
  */
-export function Figure({ value, caption, lead, tone }: { value: string; caption: string; lead?: boolean; tone?: string }) {
+export function Figure({ value, caption, lead, tone, hint }: { value: string; caption: string; lead?: boolean; tone?: string; hint?: string }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
+    <div title={hint} style={{ display: "flex", flexDirection: "column", cursor: hint ? "help" : undefined }}>
       <span
         style={{
           fontFamily: "var(--font-display)",

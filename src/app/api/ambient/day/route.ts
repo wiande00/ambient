@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { buildCandidates, toChunkInput } from "@/lib/ambient/chunks";
 import { dayFocus } from "@/lib/ambient/focus";
+import { dayShape, leftOnRanges, leftOnThreshold, markLeftOn, withoutLeftOn } from "@/lib/ambient/shape";
 import { buildTimeline } from "@/lib/ambient/timeline";
 import type { AmbientDayResponse } from "@/lib/ambient/types";
 import { loadConfig } from "../config";
@@ -39,6 +40,12 @@ export async function GET(request: Request) {
     const band = buildTimeline(day.edited.intervals);
     // With every stretch removed there is nothing left to span; say what was observed.
     const span = day.edited.intervals.length > 0 ? day.edited : day.measure;
+    // Read only: left-on time leaves the idle figures and its breaks are drawn as nobody
+    // there. The cut above, and so every stretch and label, is exactly as before.
+    const threshold = leftOnThreshold(config.breakMinutes);
+    const leftOn = leftOnRanges(day.edited, threshold);
+    const totals = withoutLeftOn(day.edited, leftOn);
+    const shown = markLeftOn(segments, leftOn);
 
     const response: AmbientDayResponse = {
       status: "ready",
@@ -46,11 +53,12 @@ export async function GET(request: Request) {
       today,
       days,
       totals: {
-        ...day.edited.totals,
+        ...totals,
         from: new Date(span.firstMs).toISOString(),
         to: new Date(span.lastMs).toISOString(),
       },
-      segments,
+      shape: dayShape(shown, totals.activeMinutes, threshold),
+      segments: shown,
       candidates: candidates.map(({ blocks, ...rest }) => {
         void blocks;
         return rest;

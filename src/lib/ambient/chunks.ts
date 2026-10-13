@@ -93,7 +93,8 @@ export type AmbientCandidate = {
 
 export type AmbientDaySegment =
   | { kind: "candidate"; index: number; from: string; to: string; minutes: number }
-  | { kind: "break"; from: string; to: string; minutes: number }
+  /** `leftOn` when the break was mostly a machine left on with nobody there (`shape.ts`); set on the way out, never by the cut. */
+  | { kind: "break"; from: string; to: string; minutes: number; leftOn?: boolean }
   | { kind: "away"; from: string; to: string; minutes: number; why: AmbientAwayKind };
 
 /** One line of a chunk's ledger: a stretch of it that belonged to one project, measured. */

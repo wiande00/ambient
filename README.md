@@ -127,11 +127,17 @@ Four parts ship as one Windows app:
 
 ## What the day screen shows
 
-- **Active / Idle / Away.** Active is time at the machine under the idle rule below. Idle is
-  time a window was in front with nobody touching the machine. Away is time between the first
-  and last observed moment that no window covers: locked, asleep, or the collector not running.
-  Time you removed from the day (see *Correcting a day*) counts as none of the three.
-- **The band.** The day in proportion, coloured by project, idle hatched, away as bare track.
+- **Active / Breaks / Span.** Active is time at the machine under the idle rule below.
+  Breaks are the gaps under an hour between stretches of work — lunch, a walk, a call away
+  from the desk — however the machine spent them. Span runs from the start of the first
+  stretch to the end of the last. All three compare from one day to the next whether or not
+  the computer was left on, which raw idle time did not.
+- **Left on.** An idle stretch of an hour or more (or of *Break after*, if that is longer) means
+  the computer was on and nobody was there. It is left out of idle and tracked time, drawn as
+  bare track, and said once under the figures as *left on, not counted*. It changes nothing
+  about how the day is cut or labelled: a stretch that long already ended a stretch of work.
+- **The band.** The day in proportion, coloured by project, idle hatched, away and left-on time
+  as bare track.
 - **The chunks.** Three to six stretches a day, one to three hours each, cut at every
   absence of twenty minutes or more, whether the screen locked or a window sat there
   untouched. Each gets a plain past-tense sentence (compound when the stretch held several
@@ -150,11 +156,12 @@ Four parts ship as one Windows app:
   never changes (the Claude desktop app is titled "Claude" whatever is open), the name it
   shows for the open conversation. Measured, not labelled, so it works on every past day and
   without an API key. *What held the day* lists the longest threads beside the cards.
-- **Rhythm.** A row under the headline figures: first and last active moment, the longest
+- **Rhythm.** A row under the headline figures: how much of the span was active, the longest
   stretch on one project, switches between threads per active hour (passing through a window
   for under ten seconds does not count), the share of active time spent in threads held under
-  two minutes, and time on calls and on video. Figures, not a grade. The week screen adds the
-  week hour by hour, and the week's longest threads.
+  two minutes, and time on calls and on video. Figures, not a grade. The week screen draws
+  each day's active time by project (idle is not stacked on top), the average span and how
+  much of it was active, the week hour by hour, and the week's longest threads.
 
 ## Working off the computer
 

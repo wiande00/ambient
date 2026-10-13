@@ -43,7 +43,8 @@ const MIN_DRAWN_SECONDS = 60;
 const QUIET_SHARE = 0.5;
 
 type Group =
-  | { kind: "gap"; why: AmbientAwayKind }
+  /** `leftOn`: a break of an hour or more, drawn like an absence because nobody was there (`shape.ts`). */
+  | { kind: "gap"; why: AmbientAwayKind | "leftOn" }
   | { kind: "break" }
   | { kind: "chunk"; chunk: AmbientChunk }
   | { kind: "unlabelled"; run: number };
@@ -78,7 +79,7 @@ export function DayBand({
   const totalMs = endMs - startMs;
   if (!(totalMs > 0)) return null;
 
-  const breaks = segments.filter((s) => s.kind === "break").map((s) => ({ startMs: ms(s.from), endMs: ms(s.to) }));
+  const breaks = segments.filter((s) => s.kind === "break").map((s) => ({ startMs: ms(s.from), endMs: ms(s.to), leftOn: s.kind === "break" && s.leftOn === true }));
   const aways = segments.filter((s) => s.kind === "away").map((s) => ({ startMs: ms(s.from), endMs: ms(s.to), why: s.why }));
   const cuts = breaks.flatMap((b) => [b.startMs, b.endMs]).sort((a, b) => a - b);
 
@@ -111,8 +112,9 @@ export function DayBand({
       const mid = pieceStart + (pieceEnd - pieceStart) / 2;
 
       let group: Group;
-      if (breaks.some((b) => mid >= b.startMs && mid <= b.endMs)) {
-        group = { kind: "break" };
+      const inBreak = breaks.find((b) => mid >= b.startMs && mid <= b.endMs);
+      if (inBreak) {
+        group = inBreak.leftOn ? { kind: "gap", why: "leftOn" } : { kind: "break" };
       } else {
         const chunk = chunks.find((c) => mid >= ms(c.from) && mid <= ms(c.to));
         if (chunk) {

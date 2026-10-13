@@ -168,14 +168,15 @@ export function ChunkList({
         if (segment.kind === "break" || segment.kind === "away") {
           const key = `gap:${segment.from}`;
           if (open?.key === key) return editor(key);
+          const leftOn = segment.kind === "break" && segment.leftOn === true;
           const text =
             segment.kind === "break"
-              ? interpolate(t.breakRow, { duration: formatDuration(segment.minutes) })
+              ? interpolate(leftOn ? t.leftOnRow : t.breakRow, { duration: formatDuration(segment.minutes) })
               : interpolate(t.awayRow, { why: en.ambient.band[segment.why], duration: formatDuration(segment.minutes) });
           const removed = segment.kind === "away" && segment.why === "removed";
           const before = chunks.filter((chunk) => chunk.label !== null && Date.parse(chunk.to) <= Date.parse(segment.from)).pop();
           return (
-            <Divider key={key} text={text} hatched={segment.kind === "break"}>
+            <Divider key={key} text={text} hatched={segment.kind === "break" && !leftOn}>
               {!editing ? null : removed ? (
                 <RowAction label={te.restore} busy={restoringKey === key} onClick={() => void restore(key, segment.from, segment.to)} visible />
               ) : (

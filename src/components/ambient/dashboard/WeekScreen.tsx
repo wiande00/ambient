@@ -1,15 +1,15 @@
 import { Tooltip } from "@/ui/Tooltip";
-import { formatDuration } from "@/lib/ambient/format";
+import { clock, formatDuration } from "@/lib/ambient/format";
 import type { AmbientWeekDay, AmbientWeekResponse } from "@/lib/ambient/types";
 import { en } from "@/i18n/en";
 import { interpolate, localeTag } from "@/i18n";
 import { Figure, Figures, SectionTitle, StepButton, TextButton, Title } from "./DayScreen";
-import { HATCH, IDLE_FILL, OTHER_FILL, projectFills, type FillFor } from "./palette";
+import { HATCH, OTHER_FILL, projectFills, type FillFor } from "./palette";
 import { ProjectList } from "./ProjectList";
 import { ThreadTotals } from "./Rhythm";
 
 /**
- * Seven days as stacked bars — one block per project, idle hatched on top — and the week's
+ * Seven days as stacked bars of active time — one block per project — and the week's
  * hours by project underneath.
  *
  * Stacking by project rather than by active-versus-idle is what makes the week worth
@@ -36,9 +36,14 @@ export function WeekScreen({
   const observed = week.days.filter((day) => day.observed);
   // Days of this week still to come are neither observed nor missing.
   const missing = week.days.filter((day) => !day.observed && day.date <= week.today).length;
-  const tallest = Math.max(1, ...week.days.map((day) => (day.observed ? day.trackedMinutes : 0)));
+  // Bars are active time only, drawn against the most active day: idle mostly measured
+  // whether the computer was left on, which made days incomparable.
+  const tallest = Math.max(1, ...week.days.map((day) => (day.observed ? day.activeMinutes : 0)));
+  const spans = observed.flatMap((day) => (day.observed && day.shape?.span ? [day.shape.span.minutes] : []));
+  const averageSpan = spans.length > 0 ? spans.reduce((sum, minutes) => sum + minutes, 0) / spans.length : null;
+  const spannedActive = observed.reduce((sum, day) => sum + (day.observed && day.shape?.span ? day.activeMinutes : 0), 0);
+  const density = averageSpan !== null && averageSpan > 0 ? Math.round((spannedActive / spans.length / averageSpan) * 100) : null;
   const active = observed.reduce((sum, day) => sum + (day.observed ? day.activeMinutes : 0), 0);
-  const idle = observed.reduce((sum, day) => sum + (day.observed ? day.idleMinutes : 0), 0);
   const unlabelledDays = observed.filter((day) => day.observed && !day.labelled).length;
   const fillFor = projectFills(week.projects);
   const viewingPast = week.to < week.today;
@@ -70,8 +75,15 @@ export function WeekScreen({
         <>
           <Figures>
             <Figure value={formatDuration(active)} caption={t.active} lead />
-            <Figure value={formatDuration(idle)} caption={t.idle} tone="var(--ink-3)" />
-            <Figure value={formatDuration(active / observed.length)} caption={t.average} tone="var(--ink-4)" />
+            <Figure value={formatDuration(active / observed.length)} caption={t.average} tone="var(--ink-3)" />
+            {averageSpan !== null ? (
+              <Figure
+                value={formatDuration(averageSpan)}
+                caption={interpolate(t.averageSpan, { density: density === null ? "–" : `${density}%` })}
+                hint={t.averageSpanHint}
+                tone="var(--ink-4)"
+              />
+            ) : null}
           </Figures>
 
           <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -142,18 +154,20 @@ export function WeekScreen({
  * time draws as one unattributed block rather than claiming a colour it hasn't earned.
  */
 function DayBar({ day, tallest, fillFor, future }: { day: AmbientWeekDay; tallest: number; fillFor: FillFor; future: boolean }) {
+  const span = day.observed ? day.shape?.span : null;
   const label = day.observed
-    ? interpolate(t.bar, {
-        date: formatShort(day.date),
-        active: formatDuration(day.activeMinutes),
-        idle: formatDuration(day.idleMinutes),
-        away: formatDuration(day.awayMinutes),
-      })
+    ? span
+      ? interpolate(t.bar, {
+          date: formatShort(day.date),
+          active: formatDuration(day.activeMinutes),
+          span: `${clock(span.from)}–${clock(span.to)}`,
+          breaks: formatDuration(day.shape.breaks.minutes),
+        })
+      : interpolate(t.barNoSpan, { date: formatShort(day.date), active: formatDuration(day.activeMinutes) })
     : `${formatShort(day.date)}: ${future ? t.notYet : t.notObserved}`;
 
   const parts: Part[] = [];
   if (day.observed) {
-    if (day.idleMinutes > 0) parts.push({ fill: IDLE_FILL, hatched: true, minutes: day.idleMinutes });
     const byProject = [...day.projects].sort((a, b) => a.activeMinutes - b.activeMinutes);
     if (byProject.length > 0) {
       for (const total of byProject) parts.push({ fill: fillFor(total.project), hatched: false, minutes: total.activeMinutes });

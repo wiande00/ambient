@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { longestProjectStretch, type AmbientFocus } from "../src/lib/ambient/focus";
 import { keyForName, FALLBACK_BUCKETS, type AmbientProject } from "../src/lib/ambient/projects";
+import type { AmbientDayShape } from "../src/lib/ambient/shape";
 import type {
   AmbientChunksResponse,
   AmbientDayResponse,
@@ -149,6 +150,15 @@ function describeFocus(focus: AmbientFocus) {
   };
 }
 
+/** The day's shape: first stretch to last, the breaks under an hour between them, and how much of the span was active. */
+function describeShape(shape: AmbientDayShape) {
+  return {
+    span: shape.span ? { from: shape.span.from.slice(11, 16), to: shape.span.to.slice(11, 16), minutes: round(shape.span.minutes) } : null,
+    breaks: { count: shape.breaks.count, minutes: round(shape.breaks.minutes) },
+    shareOfSpanActive: shape.density,
+  };
+}
+
 function describeChunks(chunks: ReadyChunks) {
   const name = (key: string) => (key in BUCKETS ? BUCKETS[key as keyof typeof BUCKETS] : (chunks.projectNames[key] ?? key));
   // A stretch of a few seconds that nothing labelled is a window flashing up, not something done.
@@ -213,7 +223,7 @@ server.registerTool(
   {
     title: "Get a day",
     description:
-      "Where the hours went on one day: tracked, active, idle and away minutes; the day cut into chunks, each with a plain sentence, the project it belonged to, its measured minutes and the conversations, pages and documents it mostly held; active minutes per project; the day's top threads; and its rhythm (first and last active time, switches per hour, share of time in glances, the longest stretch on one project, active minutes by hour). Labels come from the model and may still be pending for today; everything else is measured. Chunks the person corrected are marked editedByYou; stretches they took out are listed under removedByYou.",
+      "Where the hours went on one day: tracked, active, idle and away minutes, plus leftOn (idle stretches of an hour or more with nobody there, kept out of idle and tracked); the day cut into chunks, each with a plain sentence, the project it belonged to, its measured minutes and the conversations, pages and documents it mostly held; active minutes per project; the day's top threads; and its rhythm (span from first stretch to last, breaks under an hour between stretches, share of the span active, switches per hour, share of time in glances, the longest stretch on one project, active minutes by hour). Labels come from the model and may still be pending for today; everything else is measured. Chunks the person corrected are marked editedByYou; stretches they took out are listed under removedByYou.",
     inputSchema: { date },
   },
   async ({ date: requested }) => {
@@ -237,6 +247,8 @@ server.registerTool(
         active: round(day.totals.activeMinutes),
         idle: round(day.totals.idleMinutes),
         away: round(day.totals.awayMinutes),
+        // Idle stretches of an hour or more: the computer was on, nobody there. Not in idle or tracked.
+        leftOn: day.totals.leftOnMinutes === undefined ? undefined : round(day.totals.leftOnMinutes),
         idleEstimated: day.totals.estimatedIdle,
       },
       labels:
@@ -267,6 +279,7 @@ server.registerTool(
       rhythm: {
         // An older dashboard (the connector can outlive an update by a moment) has no rhythm.
         ...(day.focus ? describeFocus(day.focus) : {}),
+        ...(day.shape ? describeShape(day.shape) : {}),
         longestOnOneProject: (() => {
           const stretch = chunks.status === "ready" ? longestProjectStretch(chunks.chunks) : null;
           return stretch
@@ -307,6 +320,8 @@ server.registerTool(
               active: round(d.activeMinutes),
               idle: round(d.idleMinutes),
               away: round(d.awayMinutes),
+              leftOn: d.leftOnMinutes === undefined ? undefined : round(d.leftOnMinutes),
+              ...(d.shape ? describeShape(d.shape) : {}),
               labelled: d.labelled,
               rhythm: d.focus
                 ? {

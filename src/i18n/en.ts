@@ -66,6 +66,16 @@ export const en = {
       active: "active",
       idle: "idle",
       away: "away",
+      /** Second headline figure: the gaps under an hour between stretches. {count} is how many. */
+      breaks: "in {count} breaks",
+      breaksOne: "in 1 break",
+      breaksNone: "no breaks",
+      /** Third headline figure: first stretch to last. {from} and {to} are clock times. */
+      spanRange: "{from}–{to}",
+      /** Hover text on the breaks figure. */
+      breaksHint: "Gaps between stretches shorter than an hour: lunch, a walk, a call away from the desk. Longer gaps are time away, whether the screen locked or the computer was simply left on.",
+      /** Hover text on the span figure. */
+      spanHint: "From the start of the first stretch of work to the end of the last.",
       /** Under the headline: the observed span. */
       span: "Observed {from}–{to}",
       /**
@@ -82,6 +92,10 @@ export const en = {
       /** Captions under each figure in the row beneath the headline figures. */
       started: "first active",
       stopped: "last active",
+      density: "of the span active",
+      densityHint: "Active time as a share of the span from the first stretch to the last: how compressed the day was.",
+      leftOn: "left on, not counted",
+      leftOnHint: "Idle stretches of an hour or more: the computer was on and nobody was there. Left out of idle and tracked time, so a day the machine stayed on compares with one it was switched off.",
       switches: "switches an hour",
       switchesHint: "Changes between conversations, pages and documents, per active hour. Passing through a window for under ten seconds is not counted.",
       glances: "in glances",
@@ -177,6 +191,8 @@ export const en = {
       /** Clock range of one segment, e.g. "12:07–12:47". An en dash, not a hyphen. */
       range: "{from}–{to}",
       breakLabel: "Break — idle",
+      /** An idle stretch of an hour or more: the machine was on, nobody was there. */
+      leftOn: "Left on — nobody there",
       lock: "Locked",
       sleep: "Asleep",
       unobserved: "Not observed",
@@ -188,6 +204,8 @@ export const en = {
       heading: "What you did",
       range: "{from}–{to}",
       breakRow: "Break · {duration} idle",
+      /** A break of an hour or more with nobody there. */
+      leftOnRow: "Left on · {duration}, nobody there",
       /** e.g. "Locked · 1h 18". */
       awayRow: "{why} · {duration}",
       /** Under the sentence, when the stretch had idle time in it. */
@@ -257,12 +275,15 @@ export const en = {
       eyebrowPast: "Week",
       active: "active",
       idle: "idle",
-      /** The third figure: active hours divided by the days that were observed. */
+      /** The second figure: active hours divided by the days that were observed. */
       average: "average day",
+      /** The third figure: the average span from first stretch to last. {density} is the share of it that was active. */
+      averageSpan: "average span · {density} active",
+      averageSpanHint: "From the start of each day's first stretch of work to the end of its last, averaged. The share is how much of it was active.",
       /** Over the seven bars. */
       byProject: "Monday to Sunday, by project",
-      /** {duration} is the tallest day's tracked time, which the bars are drawn against. */
-      tallest: "Tallest day {duration}",
+      /** {duration} is the tallest day's active time, which the bars are drawn against. */
+      tallest: "Tallest day {duration} active",
       /** Over the per-project totals. */
       whereWent: "Where the week went",
       /** The callout under the week. */
@@ -288,8 +309,10 @@ export const en = {
       notYet: "Still to come",
       unlabelled: "{duration} on {count} days isn't labelled yet. Open a day to label it.",
       unlabelledOne: "{duration} on 1 day isn't labelled yet. Open it to label it.",
-      /** Per-bar tooltip. */
-      bar: "{date}: {active} active, {idle} idle, {away} away",
+      /** Per-bar tooltip. {span} is a clock range, {breaks} a duration. */
+      bar: "{date}: {active} active · {span} · {breaks} in breaks",
+      /** The same on a day with no stretch of work. */
+      barNoSpan: "{date}: {active} active",
     },
     /** The banner across the top of every screen once a newer build is verified and waiting. */
     updateBanner: {

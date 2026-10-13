@@ -1,7 +1,7 @@
 import type { AmbientCandidate, AmbientChunk, AmbientDaySegment, AmbientProjectTotal } from "./chunks";
 import type { ChunkEdit } from "./edits";
 import type { AmbientFocus } from "./focus";
-import type { AmbientDayTotals } from "./intervals";
+import type { AmbientDayShape, AmbientShapedTotals } from "./shape";
 import type { OffComputerSession } from "./offComputer";
 import type { AmbientProject } from "./projects";
 import type { AmbientThreadTotal } from "./threads";
@@ -23,7 +23,10 @@ export type AmbientDayResponse =
       today: string;
       /** Every date with a log, ascending. */
       days: string[];
-      totals: AmbientDayTotals & { from: string; to: string };
+      /** Idle and tracked leave out left-on time, which has its own figure (`shape.ts`). */
+      totals: AmbientShapedTotals & { from: string; to: string };
+      /** Span, breaks and density: the day's shape, comparable whether or not the machine was left on. */
+      shape: AmbientDayShape;
       /** The day in order: candidates, breaks and away gaps. */
       segments: AmbientDaySegment[];
       candidates: Omit<AmbientCandidate, "blocks">[];
@@ -106,6 +109,9 @@ export type AmbientWeekDay =
       activeByHour: number[];
       /** The day's rhythm in brief. */
       focus: Pick<AmbientFocus, "firstActiveAt" | "lastActiveAt" | "switchesPerHour" | "glanceShare" | "meetingMinutes" | "videoMinutes">;
+      /** Idle minutes long enough that the machine was simply left on; not in `idleMinutes` or `trackedMinutes`. */
+      leftOnMinutes: number;
+      shape: AmbientDayShape;
     };
 
 /** `/api/ambient/projects` — the projects file as the Settings screen edits it. */
