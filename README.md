@@ -137,7 +137,9 @@ Four parts ship as one Windows app:
   bare track, and said once under the figures as *left on, not counted*. It changes nothing
   about how the day is cut or labelled: a stretch that long already ended a stretch of work.
 - **The band.** The day in proportion, coloured by project, idle hatched, away and left-on time
-  as bare track.
+  as bare track. A computer left on before the first stretch of work or after the last is not
+  drawn, in the band or the list: left on overnight, the band starts with the morning's first
+  stretch rather than at midnight.
 - **The chunks.** Three to six stretches a day, one to three hours each, cut at every
   absence of twenty minutes or more, whether the screen locked or a window sat there
   untouched. Each gets a plain past-tense sentence (compound when the stretch held several

@@ -5,6 +5,7 @@ import { Tooltip } from "@/ui/Tooltip";
 import type { AmbientChunk, AmbientDaySegment } from "@/lib/ambient/chunks";
 import type { AmbientAwayKind } from "@/lib/ambient/intervals";
 import { clock, formatDuration } from "@/lib/ambient/format";
+import { shownRange } from "@/lib/ambient/shape";
 import type { AmbientTimeline } from "@/lib/ambient/timeline";
 import { en } from "@/i18n/en";
 import { interpolate } from "@/i18n";
@@ -18,7 +19,9 @@ import { GAP_FILL, HATCH, IDLE_FILL, OTHER_FILL, type FillFor } from "./palette"
  * The gaps are the point. A band that closed up its gaps would render an untracked hour as
  * though the person had been in some app the whole time. Bare track reads as absence, its
  * tooltip says why in words (locked, asleep, not observed), and the note under the band
- * says it again.
+ * says it again. The one thing left off is a computer left on before the first stretch of
+ * work or after the last (`shownRange`): that is not the day's shape but the edge of it, and
+ * a night of it would squeeze the morning into a sliver.
  *
  * Two rendering passes stand between the measured spans and what is drawn. First, every
  * span joins a group — the chunk covering it, the break it falls in, a gap, or a run of
@@ -74,8 +77,10 @@ export function DayBand({
   fillFor: FillFor;
   style?: CSSProperties;
 }) {
-  const startMs = new Date(band.start).getTime();
-  const endMs = new Date(band.end).getTime();
+  const bandStartMs = new Date(band.start).getTime();
+  const bandEndMs = new Date(band.end).getTime();
+  // Pieces are built across everything observed, then cut to the part worth drawing.
+  const { startMs, endMs } = shownRange(segments, bandStartMs, bandEndMs);
   const totalMs = endMs - startMs;
   if (!(totalMs > 0)) return null;
 
@@ -84,7 +89,7 @@ export function DayBand({
   const cuts = breaks.flatMap((b) => [b.startMs, b.endMs]).sort((a, b) => a - b);
 
   const raw: Segment[] = [];
-  let cursorMs = startMs;
+  let cursorMs = bandStartMs;
   let run = 0;
   let previousUnlabelled = false;
 
@@ -130,9 +135,9 @@ export function DayBand({
     }
     cursorMs = spanEnd;
   }
-  if (cursorMs < endMs) pushGap(cursorMs, endMs);
+  if (cursorMs < bandEndMs) pushGap(cursorMs, bandEndMs);
 
-  const drawn = collapse(raw, totalMs);
+  const drawn = collapse(clip(raw, startMs, endMs), totalMs);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, ...style }}>
@@ -285,6 +290,17 @@ function sameGroup(a: Group, b: Group): boolean {
   if (a.kind === "unlabelled" && b.kind === "unlabelled") return a.run === b.run;
   if (a.kind === "gap" && b.kind === "gap") return a.why === b.why;
   return true;
+}
+
+/** The pieces inside `startMs`–`endMs`, one across an edge cut at it with its minutes in proportion. */
+function clip(segments: Segment[], startMs: number, endMs: number): Segment[] {
+  return segments.flatMap((segment) => {
+    const fromMs = Math.max(segment.startMs, startMs);
+    const toMs = Math.min(segment.endMs, endMs);
+    if (toMs <= fromMs) return [];
+    const share = (toMs - fromMs) / (segment.endMs - segment.startMs);
+    return [{ ...segment, startMs: fromMs, endMs: toMs, activeMs: segment.activeMs * share, idleMs: segment.idleMs * share }];
+  });
 }
 
 /**

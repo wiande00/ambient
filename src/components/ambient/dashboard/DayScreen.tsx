@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Icon } from "@/ui/Icon";
 import { FALLBACK_BUCKETS, isFallbackBucket } from "@/lib/ambient/projects";
 import { clock, formatDuration } from "@/lib/ambient/format";
+import { shownRange } from "@/lib/ambient/shape";
 import type { AmbientChunksResponse, AmbientDayResponse } from "@/lib/ambient/types";
 import { en } from "@/i18n/en";
 import { interpolate, localeTag } from "@/i18n";
@@ -74,6 +75,8 @@ export function DayScreen({
 
   const since = formatSince(day.days[0] ?? day.date, day.today);
   const observed = day.status === "ready" ? interpolate(t.day.span, { from: clock(day.totals.from), to: clock(day.totals.to) }) : null;
+  // What the band draws, which leaves off a computer left on at either end of the day.
+  const drawn = day.status === "ready" ? shownRange(day.segments, Date.parse(day.totals.from), Date.parse(day.totals.to)) : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 34 }}>
@@ -141,7 +144,7 @@ export function DayScreen({
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16 }}>
                 <SectionTitle>{t.day.shape}</SectionTitle>
                 <span className="ui-mono" style={{ fontSize: 11, color: "var(--ink-4)" }}>
-                  {interpolate(t.day.shapeRange, { from: clock(day.totals.from), to: clock(day.totals.to) })}
+                  {drawn ? interpolate(t.day.shapeRange, { from: clock(drawn.startMs), to: clock(drawn.endMs) }) : null}
                 </span>
               </div>
               <DayBand band={day.band} segments={day.segments} chunks={ready?.chunks ?? []} fillFor={fillFor} />

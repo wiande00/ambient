@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Icon } from "@/ui/Icon";
 import type { AmbientChunk, AmbientDaySegment } from "@/lib/ambient/chunks";
 import { clock, formatDuration } from "@/lib/ambient/format";
+import { shownRange } from "@/lib/ambient/shape";
 import type { AmbientThreadLine } from "@/lib/ambient/threads";
 import type { AmbientChunksResponse, AmbientEditsResponse } from "@/lib/ambient/types";
 import { en } from "@/i18n/en";
@@ -83,6 +84,10 @@ export function ChunkList({
   // flashes up again in between. Derived rather than cleared in an effect.
   const open = openState && editing && (openState.savedWith === undefined || openState.savedWith === editing.source) ? openState : null;
   const restoringKey = restoring && editing && restoring.savedWith === editing.source ? restoring.key : null;
+  // The band's edges: a computer left on before the first stretch or after the last gets no
+  // row, only its mention under the figures.
+  const shown = shownRange(segments, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY);
+  const beyondEdge = (segment: AmbientDaySegment) => Date.parse(segment.to) <= shown.startMs || Date.parse(segment.from) >= shown.endMs;
 
   const editor = (key: string) =>
     editing && open?.key === key ? (
@@ -166,6 +171,9 @@ export function ChunkList({
 
       {segments.map((segment, index) => {
         if (segment.kind === "break" || segment.kind === "away") {
+          const removed = segment.kind === "away" && segment.why === "removed";
+          // A removed stretch keeps its row wherever it fell, so it can be given back.
+          if (!removed && beyondEdge(segment)) return null;
           const key = `gap:${segment.from}`;
           if (open?.key === key) return editor(key);
           const leftOn = segment.kind === "break" && segment.leftOn === true;
@@ -173,7 +181,6 @@ export function ChunkList({
             segment.kind === "break"
               ? interpolate(leftOn ? t.leftOnRow : t.breakRow, { duration: formatDuration(segment.minutes) })
               : interpolate(t.awayRow, { why: en.ambient.band[segment.why], duration: formatDuration(segment.minutes) });
-          const removed = segment.kind === "away" && segment.why === "removed";
           const before = chunks.filter((chunk) => chunk.label !== null && Date.parse(chunk.to) <= Date.parse(segment.from)).pop();
           return (
             <Divider key={key} text={text} hatched={segment.kind === "break" && !leftOn}>
@@ -198,8 +205,9 @@ export function ChunkList({
 
         const own = chunks.filter((chunk) => chunk.candidate === segment.index);
         // A stretch of a few seconds between two gaps — a window that flashed up as the
-        // machine woke — is not something anyone did. Nothing could label it; it is left out.
-        if (segment.minutes < MIN_STRETCH_MINUTES && own.every((chunk) => chunk.label === null)) return null;
+        // machine woke — is not something anyone did. Nothing could label it; it is left out,
+        // as is one out past the edges, the screen waking in the night.
+        if ((segment.minutes < MIN_STRETCH_MINUTES || beyondEdge(segment)) && own.every((chunk) => chunk.label === null)) return null;
         if (own.length === 0) {
           return (
             <PendingCard key={index} from={segment.from} to={segment.to} minutes={segment.minutes} text={pendingText(labelState)} />

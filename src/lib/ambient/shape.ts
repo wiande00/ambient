@@ -79,13 +79,41 @@ export type AmbientDayShape = {
 /** A stretch shorter than this does not open or close the day: a window that flashed up as the machine woke. */
 const MIN_STRETCH_MINUTES = 1;
 
+/** Whether a segment is a stretch of work long enough to open or close the day. */
+function isStretch(segment: AmbientDaySegment): boolean {
+  return segment.kind === "candidate" && segment.minutes >= MIN_STRETCH_MINUTES;
+}
+
+/**
+ * The part of the day worth drawing: `startMs`–`endMs`, less a computer left on at either
+ * end. Left on overnight, the day opens at midnight with hours nobody was at, and drawn in
+ * proportion they squeeze the morning's work into a sliver at the far edge of the band. So
+ * when a left-on break comes before the first stretch of work, the drawing starts with that
+ * stretch, and when one comes after the last, it ends with it — the same stretches that
+ * open and close the span. A left-on break between two stretches stays: it is part of the
+ * day's shape, and the span counts it.
+ *
+ * Drawing only. The time is still in the day, said once as left on.
+ */
+export function shownRange(segments: AmbientDaySegment[], startMs: number, endMs: number): { startMs: number; endMs: number } {
+  const first = segments.findIndex(isStretch);
+  if (first === -1) return { startMs, endMs };
+  let last = first;
+  segments.forEach((segment, index) => {
+    if (isStretch(segment)) last = index;
+  });
+  const leftOn = (segment: AmbientDaySegment) => segment.kind === "break" && segment.leftOn === true;
+  const from = segments.slice(0, first).some(leftOn) ? Math.max(startMs, Date.parse(segments[first].from)) : startMs;
+  const to = segments.slice(last + 1).some(leftOn) ? Math.min(endMs, Date.parse(segments[last].to)) : endMs;
+  return from < to ? { startMs: from, endMs: to } : { startMs, endMs };
+}
+
 /**
  * Span, breaks and density from the day's cut. A gap between two stretches — however the
  * machine spent it: idle, locked, asleep — is a break when shorter than the left-on
  * threshold, and time away otherwise. A stretch the person removed is neither.
  */
 export function dayShape(segments: AmbientDaySegment[], activeMinutes: number, thresholdMinutes: number): AmbientDayShape {
-  const isStretch = (segment: AmbientDaySegment) => segment.kind === "candidate" && segment.minutes >= MIN_STRETCH_MINUTES;
   const first = segments.findIndex(isStretch);
   if (first === -1) return { span: null, breaks: { count: 0, minutes: 0 }, density: null };
   let last = first;
