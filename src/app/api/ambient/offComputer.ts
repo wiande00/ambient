@@ -1,6 +1,13 @@
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { EMPTY_OFF_COMPUTER, parseOffComputerFile, type OffComputerFile, type OffComputerSession } from "@/lib/ambient/offComputer";
+import {
+  EMPTY_OFF_COMPUTER,
+  isRunning,
+  parseOffComputerFile,
+  sessionEndMs,
+  type OffComputerFile,
+  type OffComputerSession,
+} from "@/lib/ambient/offComputer";
 import { ambientDir } from "./store";
 
 /**
@@ -37,26 +44,53 @@ async function writeOffComputer(file: OffComputerFile): Promise<void> {
   await rename(tmp, target);
 }
 
-export function activeSession(file: OffComputerFile): OffComputerSession | null {
-  return file.sessions.find((session) => session.to === null) ?? null;
+/** The session still counting, if any. One past its stop time has ended, whatever `to` says. */
+export function activeSession(file: OffComputerFile, nowMs = Date.now()): OffComputerSession | null {
+  return file.sessions.find((session) => isRunning(session, nowMs)) ?? null;
 }
 
-/** Starts a session now, closing any that was still open. */
-export async function startOffComputer(project: string, note: string): Promise<OffComputerSession> {
+/**
+ * Closes whatever is still open: at its stop time when that has passed, so a session that
+ * ran out is written down where it ended rather than when someone next touched the switch.
+ */
+function closeOpen(sessions: OffComputerSession[], nowMs: number): OffComputerSession[] {
+  return sessions.map((session) => (session.to === null ? { ...session, to: new Date(sessionEndMs(session, nowMs)).toISOString() } : session));
+}
+
+/** Starts a session now, closing any that was still open. `untilMs`, when set, is when it stops on its own. */
+export async function startOffComputer(project: string, note: string, untilMs: number | null = null): Promise<OffComputerSession> {
   const file = await readOffComputer();
-  const now = new Date().toISOString();
-  const closed = file.sessions.map((session) => (session.to === null ? { ...session, to: now } : session));
-  const session: OffComputerSession = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, from: now, to: null, project, note: note.trim() };
-  await writeOffComputer({ version: 1, sessions: [...closed, session] });
+  const nowMs = Date.now();
+  const session: OffComputerSession = {
+    id: `${nowMs.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    from: new Date(nowMs).toISOString(),
+    to: null,
+    project,
+    note: note.trim(),
+    ...(untilMs !== null ? { until: new Date(untilMs).toISOString() } : {}),
+  };
+  await writeOffComputer({ version: 1, sessions: [...closeOpen(file.sessions, nowMs), session] });
   return session;
 }
 
-/** Ends the open session, if there is one. */
+/** Ends the open session, if there is one: now, or at its stop time if that has already passed. */
 export async function stopOffComputer(): Promise<OffComputerSession | null> {
   const file = await readOffComputer();
-  const open = activeSession(file);
-  if (!open) return null;
-  const ended = { ...open, to: new Date().toISOString() };
-  await writeOffComputer({ version: 1, sessions: file.sessions.map((session) => (session.id === open.id ? ended : session)) });
-  return ended;
+  const nowMs = Date.now();
+  if (!file.sessions.some((session) => session.to === null)) return null;
+  const sessions = closeOpen(file.sessions, nowMs);
+  await writeOffComputer({ version: 1, sessions });
+  return sessions.find((session, i) => file.sessions[i].to === null) ?? null;
+}
+
+/** Gives the running session a stop time, or takes it away with null. Null when nothing is running. */
+export async function setOffComputerUntil(untilMs: number | null): Promise<OffComputerSession | null> {
+  const file = await readOffComputer();
+  const running = activeSession(file);
+  if (!running) return null;
+  const { until, ...rest } = running;
+  void until;
+  const next: OffComputerSession = untilMs === null ? rest : { ...rest, until: new Date(untilMs).toISOString() };
+  await writeOffComputer({ version: 1, sessions: file.sessions.map((session) => (session.id === running.id ? next : session)) });
+  return next;
 }

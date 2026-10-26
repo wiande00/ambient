@@ -166,6 +166,11 @@ export const en = {
       since: "Off computer since {time} · {project}",
       /** Follows `since` while the switch is on. */
       onHint: "This time counts as active work however long the keyboard is untouched.",
+      stopAt: "Stop at (optional)",
+      /** {time} is a clock time. */
+      stopsAt: "Stops on its own at {time}.",
+      /** {time} is a clock time, when that is after midnight. */
+      stopsTomorrowAt: "Stops on its own tomorrow at {time}.",
       /** {message} is the server's reason. */
       failed: "Could not save: {message}",
     },

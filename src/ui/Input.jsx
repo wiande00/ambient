@@ -21,8 +21,9 @@ export function Input({ iconLeft, iconRight, invalid, disabled, size = 'md', sty
         {...rest} disabled={disabled}
         onFocus={(e) => { setFocus(true); rest.onFocus?.(e); }}
         onBlur={(e) => { setFocus(false); rest.onBlur?.(e); }}
+        // No box shadow: the field around it shows focus, and the global focus ring drew a box inside it.
         style={{
-          flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
+          flex: 1, minWidth: 0, border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent',
           font: 'inherit', fontFamily: 'var(--font-sans)',
           fontSize: size === 'sm' ? 'var(--text-body-sm)' : 'var(--text-body-md)',
           color: 'var(--ink-1)',

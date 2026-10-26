@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { longestProjectStretch, type AmbientFocus } from "../src/lib/ambient/focus";
+import { nextClockTime } from "../src/lib/ambient/offComputer";
 import { keyForName, FALLBACK_BUCKETS, PROJECT_COLORS, projectColors, type AmbientProject } from "../src/lib/ambient/projects";
 import type { AmbientDayShape } from "../src/lib/ambient/shape";
 import type {
@@ -565,27 +566,42 @@ server.registerTool(
 function describeOffComputer(res: AmbientOffComputerResponse) {
   if (res.status !== "ready") throw new Error(res.message);
   return {
-    active: res.active ? { since: res.active.from, project: res.active.project, note: res.active.note || undefined } : null,
+    active: res.active
+      ? { since: res.active.from, project: res.active.project, note: res.active.note || undefined, stopsAt: res.active.until ?? "(when turned off)" }
+      : null,
     today: res.today.map((s) => ({ from: s.from, to: s.to ?? "(running)", project: s.project, note: s.note || undefined })),
   };
 }
+
+/** A stop time as the app takes it: "17:00" is the next time the local clock reads that, anything else an ISO time. */
+function stopTime(value: string): string | null {
+  const ms = nextClockTime(value, Date.now()) ?? Date.parse(value);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+const stopAt = z
+  .string()
+  .describe('When it stops on its own: a local clock time like "17:00" (the next time the clock reads that, today or else tomorrow), or an ISO time.');
 
 server.registerTool(
   "start_off_computer",
   {
     title: "Start working off the computer",
     description:
-      "Turn on the \"working off computer\" switch: from now until it is stopped, time counts as active work on the given project whatever the screen shows — pen and paper, a book, a whiteboard. Any session already running is closed first.",
+      "Turn on the \"working off computer\" switch: from now until it is stopped, time counts as active work on the given project whatever the screen shows — pen and paper, a book, a whiteboard. Any session already running is closed first. Give it a stop time (e.g. the end of a seminar) so a forgotten switch does not keep counting.",
     inputSchema: {
       project: z.string().optional().describe("A project key from list_projects, or the bucket other (the default)."),
       note: z.string().optional().describe("What, in a few words, e.g. \"chapter 4 exercises\". Becomes the chunk's text."),
+      until: stopAt.optional(),
     },
   },
-  async ({ project, note }) => {
+  async ({ project, note, until }) => {
+    const untilIso = until === undefined ? undefined : stopTime(until);
+    if (untilIso === null) return fail(`"${until}" is not a clock time like "17:00" or an ISO time.`);
     const res = await api<AmbientOffComputerResponse>("/api/ambient/offcomputer", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ on: true, project: project ?? "other", note: note ?? "" }),
+      body: JSON.stringify({ on: true, project: project ?? "other", note: note ?? "", ...(untilIso ? { until: untilIso } : {}) }),
     });
     if (res.status !== "ready") return fail(res.message);
     return text(describeOffComputer(res));
@@ -604,6 +620,28 @@ server.registerTool(
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ on: false }),
+    });
+    if (res.status !== "ready") return fail(res.message);
+    return text(describeOffComputer(res));
+  },
+);
+
+server.registerTool(
+  "set_off_computer_stop",
+  {
+    title: "Set when working off the computer stops",
+    description: "Give the running \"working off computer\" session a stop time, change it, or clear it so it runs until turned off. Fails when no session is running.",
+    inputSchema: {
+      until: z.union([stopAt, z.literal("none")]).describe('As for start_off_computer, or "none" to clear the stop time.'),
+    },
+  },
+  async ({ until }) => {
+    const untilIso = until === "none" ? null : stopTime(until);
+    if (until !== "none" && untilIso === null) return fail(`"${until}" is not a clock time like "17:00" or an ISO time.`);
+    const res = await api<AmbientOffComputerResponse>("/api/ambient/offcomputer", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ until: untilIso }),
     });
     if (res.status !== "ready") return fail(res.message);
     return text(describeOffComputer(res));

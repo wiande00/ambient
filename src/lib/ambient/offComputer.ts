@@ -7,6 +7,10 @@
  *
  * A session is trusted over the screen: while it runs, the time counts as active work on
  * its project whatever window is in front and however long the keyboard is untouched.
+ *
+ * A session can be given a stop time when it starts, or while it runs. It ends there on its
+ * own: nothing writes the file at that moment, so every reader works the end out with
+ * `sessionEndMs` instead of trusting `to` alone.
  */
 
 import { currentProjectKey, OTHER_BUCKET } from "./projects";
@@ -21,6 +25,8 @@ export type OffComputerSession = {
   project: string;
   /** What, in a few words. May be empty. */
   note: string;
+  /** UTC ISO: when a running session stops on its own. Absent when it runs until turned off. */
+  until?: string;
 };
 
 export type OffComputerFile = { version: 1; sessions: OffComputerSession[] };
@@ -52,18 +58,52 @@ export function parseOffComputerFile(raw: string | null): OffComputerFile {
     if (!isRecord(entry)) continue;
     if (typeof entry.id !== "string" || typeof entry.from !== "string" || !Number.isFinite(new Date(entry.from).getTime())) continue;
     const to = typeof entry.to === "string" && Number.isFinite(new Date(entry.to).getTime()) ? entry.to : null;
+    const until = typeof entry.until === "string" && Number.isFinite(new Date(entry.until).getTime()) ? entry.until : null;
     sessions.push({
       id: entry.id,
       from: entry.from,
       to,
       project: typeof entry.project === "string" && entry.project ? currentProjectKey(entry.project) : OTHER_BUCKET,
       note: typeof entry.note === "string" ? entry.note.trim() : "",
+      ...(until ? { until } : {}),
     });
   }
   return { version: 1, sessions };
 }
 
-/** The sessions that touch one local day, clipped to it; an open session runs to `nowMs`. Ascending, non-overlapping. */
+/** When a session ended: `to`, or for one still open its stop time if that has passed, else `nowMs`. */
+export function sessionEndMs(session: OffComputerSession, nowMs: number): number {
+  if (session.to !== null) return new Date(session.to).getTime();
+  return session.until ? Math.min(nowMs, new Date(session.until).getTime()) : nowMs;
+}
+
+/** Still counting: never turned off, and not yet at its stop time. */
+export function isRunning(session: OffComputerSession, nowMs: number): boolean {
+  return session.to === null && (!session.until || new Date(session.until).getTime() > nowMs);
+}
+
+/** The session as it stands at `nowMs`: one that ran out has `to` set to its stop time. */
+export function settledSession(session: OffComputerSession, nowMs: number): OffComputerSession {
+  return session.to === null && !isRunning(session, nowMs) ? { ...session, to: session.until ?? null } : session;
+}
+
+/**
+ * The next time the local clock reads `hhmm` ("17:00"): later today, or tomorrow once
+ * today's has passed. Null for anything that is not a clock time.
+ */
+export function nextClockTime(hhmm: string, nowMs: number): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  const now = new Date(nowMs);
+  const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes);
+  if (at.getTime() <= nowMs) at.setDate(at.getDate() + 1);
+  return at.getTime();
+}
+
+/** The sessions that touch one local day, clipped to it; an open session runs to `nowMs` or its stop time. Ascending, non-overlapping. */
 export function rangesForDay(file: OffComputerFile, date: string, nowMs: number): ManualRange[] {
   const [y, m, d] = date.split("-").map(Number);
   const dayStartMs = new Date(y, m - 1, d).getTime();
@@ -71,8 +111,7 @@ export function rangesForDay(file: OffComputerFile, date: string, nowMs: number)
   const out: ManualRange[] = [];
   for (const session of file.sessions) {
     const startMs = Math.max(new Date(session.from).getTime(), dayStartMs);
-    const rawEnd = session.to === null ? nowMs : new Date(session.to).getTime();
-    const endMs = Math.min(rawEnd, dayEndMs);
+    const endMs = Math.min(sessionEndMs(session, nowMs), dayEndMs);
     if (endMs > startMs) out.push({ startMs, endMs, project: session.project, note: session.note });
   }
   out.sort((a, b) => a.startMs - b.startMs);
