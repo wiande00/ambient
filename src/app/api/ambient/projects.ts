@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { EMPTY_PROJECTS, parseProjectsFile, type AmbientProjectsFile } from "@/lib/ambient/projects";
+import { EMPTY_PROJECTS, parseProjectsFile, projectsKeyText, type AmbientProjectsFile } from "@/lib/ambient/projects";
 import { ambientDir } from "./store";
 
 /**
@@ -25,8 +25,11 @@ export function projectsPath(): string {
 
 export type LoadedProjects = {
   file: AmbientProjectsFile;
-  /** The raw text, for the cache key: any edit to the file changes every day's labels. */
-  raw: string;
+  /**
+   * For the cache key (`projectsKeyText`): any edit the model would see changes every day's
+   * labels, a colour does not. Empty when there is no usable file, as the raw text was.
+   */
+  keyText: string;
   /** Set when the file exists but could not be used. */
   error: string | null;
 };
@@ -36,14 +39,15 @@ export async function loadProjects(): Promise<LoadedProjects> {
   try {
     raw = await readFile(projectsPath(), "utf8");
   } catch {
-    return { file: EMPTY_PROJECTS, raw: "", error: null };
+    return { file: EMPTY_PROJECTS, keyText: "", error: null };
   }
   try {
-    return { file: parseProjectsFile(raw), raw, error: null };
+    const file = parseProjectsFile(raw);
+    return { file, keyText: projectsKeyText(file), error: null };
   } catch (error) {
     return {
       file: EMPTY_PROJECTS,
-      raw: "",
+      keyText: "",
       error: error instanceof Error ? error.message : "projects.json could not be read.",
     };
   }

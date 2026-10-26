@@ -45,7 +45,7 @@ export function WeekScreen({
   const density = averageSpan !== null && averageSpan > 0 ? Math.round((spannedActive / spans.length / averageSpan) * 100) : null;
   const active = observed.reduce((sum, day) => sum + (day.observed ? day.activeMinutes : 0), 0);
   const unlabelledDays = observed.filter((day) => day.observed && !day.labelled).length;
-  const fillFor = projectFills(week.projects);
+  const fillFor = projectFills(week.projectColors);
   const viewingPast = week.to < week.today;
   const longest = observed.reduce<AmbientWeekDay | null>(
     (best, day) => (day.observed && (best === null || !best.observed || day.activeMinutes > best.activeMinutes) ? day : best),

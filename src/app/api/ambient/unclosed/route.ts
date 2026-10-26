@@ -48,7 +48,7 @@ export async function GET(request: Request) {
       if (!day || day.measure.intervals.length === 0) continue;
       const { candidates } = buildCandidates(day.measure, config.breakMinutes);
       const input = toChunkInput(candidates, projects.file.projects, config.afkSeconds);
-      const keyed = keyCandidates(candidates, input, projects.raw);
+      const keyed = keyCandidates(candidates, input, projects.keyText);
       const cached = await readChunkCache(date);
       // The same reading the chunks route gives a cache, salvage of the older shape and all,
       // or a day whose labels only need carrying forward would be reported as needing a call.

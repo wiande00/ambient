@@ -3,6 +3,7 @@ import { daySegments, projectTotals, type AmbientChunk } from "@/lib/ambient/chu
 import { dayShape, leftOnRanges, leftOnThreshold, markLeftOn, withoutLeftOn } from "@/lib/ambient/shape";
 import { dayFocus } from "@/lib/ambient/focus";
 import { attachThreads, dayThreadTotals, threadTotals, type AmbientThreadLine } from "@/lib/ambient/threads";
+import { projectColors } from "@/lib/ambient/projects";
 import type { AmbientWeekDay, AmbientWeekResponse } from "@/lib/ambient/types";
 import { readChunkCache } from "../chunkCache";
 import { loadConfig } from "../config";
@@ -98,6 +99,7 @@ export async function GET(request: Request) {
       projects: projectTotals(allChunks),
       unlabelledMinutes: Math.round(unlabelledMinutes * 10) / 10,
       projectNames: Object.fromEntries(projects.file.projects.map((p) => [p.key, p.name])),
+      projectColors: projectColors(projects.file.projects),
       threads: threadTotals(threadSources),
     } satisfies AmbientWeekResponse);
   } catch (error) {

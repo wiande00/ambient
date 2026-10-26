@@ -3,7 +3,7 @@ import type { ChunkEdit } from "./edits";
 import type { AmbientFocus } from "./focus";
 import type { AmbientDayShape, AmbientShapedTotals } from "./shape";
 import type { OffComputerSession } from "./offComputer";
-import type { AmbientProject } from "./projects";
+import type { AmbientProject, ProjectColor } from "./projects";
 import type { AmbientThreadTotal } from "./threads";
 import type { AmbientTimeline } from "./timeline";
 
@@ -80,6 +80,8 @@ export type AmbientChunksResponse =
       projectsError: string | null;
       /** Display name per project key from projects.json. Buckets are named by the UI. */
       projectNames: Record<string, string>;
+      /** Colour per project key from projects.json, picked or handed out (`projectColors`). */
+      projectColors: Record<string, ProjectColor>;
       /** Set while labelling is stuck on something only the person can fix (`labelHealth.ts`). */
       labelProblem: AmbientLabelProblem | null;
     }
@@ -189,6 +191,7 @@ export type AmbientWeekResponse =
       /** Tracked minutes on observed days that have no chunk cache yet. */
       unlabelledMinutes: number;
       projectNames: Record<string, string>;
+      projectColors: Record<string, ProjectColor>;
       /** The week's threads, longest first; on a day nobody has labelled they carry no project. */
       threads: AmbientThreadTotal[];
     }

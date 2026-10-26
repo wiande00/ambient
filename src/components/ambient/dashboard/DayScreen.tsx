@@ -51,7 +51,7 @@ export function DayScreen({
   const viewingPast = day.date !== day.today;
 
   const ready = chunks.status === "ready" ? chunks : null;
-  const { fillFor, textFor } = projectPalette(ready?.projects ?? []);
+  const { fillFor, textFor } = projectPalette(ready?.projectColors ?? {});
   const names = ready?.projectNames ?? {};
   const labelState: LabelState =
     chunks.status === "loading" ? "loading" : chunks.status === "not_configured" ? "noKey" : chunks.status === "ready" ? "ready" : "unavailable";

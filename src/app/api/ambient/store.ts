@@ -96,13 +96,13 @@ export function hashCandidate(
   model: string,
   systemPrompt: string,
   schema: unknown,
-  projectsRaw: string,
+  projectsText: string,
   afkThresholdMinutes: number,
   entry: ChunkPromptInput["candidates"][number],
 ): string {
   const { index, ...candidate } = entry;
   void index;
-  return hashReadInput(model, systemPrompt, schema, { projects: projectsRaw, afk: afkThresholdMinutes, candidate });
+  return hashReadInput(model, systemPrompt, schema, { projects: projectsText, afk: afkThresholdMinutes, candidate });
 }
 
 export function hashReadInput(model: string, systemPrompt: string, schema: unknown, digest: unknown): string {

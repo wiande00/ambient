@@ -5,9 +5,10 @@
    object, and one hue per project rather than one ramp shared by all of them.
 
    Projects are coloured by an oklch formula, not a hand-picked list: same lightness and
-   chroma, five hues spread around the wheel, so no project reads as more important than
-   another and a new project never lands on a value that clashes. The `t` variants are the
+   chroma, eight hues spread around the wheel, so no project reads as more important than
+   another and whichever colour a person picks never clashes. The `t` variants are the
    same hue darkened enough to set as text on paper; dark mode lightens both instead.
+   The --data ramp keeps the first five for the accent and the charts that are not projects.
 
    The Other bucket sits outside that: it is the honest remainder, so it
    takes a neutral warm tone and stays quiet next to the named projects. */
@@ -40,7 +41,7 @@
   --ink-4:#79705F;
   --ink-5:#9A9082;
 
-  /* One hue per project, ranked by how much of the period each holds. */
+  /* The chart ramp: the accent, the focus ring, the pomodoro. Projects have their own below. */
   --data-1:oklch(0.56 0.10 155);
   --data-2:oklch(0.56 0.10 300);
   --data-3:oklch(0.56 0.10 40);
@@ -54,6 +55,24 @@
   --data-track:#EAE0CE;
   --data-bar:var(--data-1);
   --data-highlight:var(--ink-1);
+
+  /* Project colours, named as projects.json stores them (PROJECT_COLORS). */
+  --project-green:oklch(0.56 0.10 155);
+  --project-purple:oklch(0.56 0.10 300);
+  --project-orange:oklch(0.56 0.10 40);
+  --project-blue:oklch(0.56 0.10 225);
+  --project-yellow:oklch(0.56 0.10 95);
+  --project-teal:oklch(0.56 0.10 190);
+  --project-pink:oklch(0.56 0.10 350);
+  --project-indigo:oklch(0.56 0.10 262);
+  --project-green-t:oklch(0.44 0.10 155);
+  --project-purple-t:oklch(0.44 0.10 300);
+  --project-orange-t:oklch(0.44 0.10 40);
+  --project-blue-t:oklch(0.44 0.10 225);
+  --project-yellow-t:oklch(0.44 0.10 95);
+  --project-teal-t:oklch(0.44 0.10 190);
+  --project-pink-t:oklch(0.44 0.10 350);
+  --project-indigo-t:oklch(0.44 0.10 262);
 
   /* The Other bucket: quiet, so it never competes with a named project. */
   --bucket:oklch(0.88 0.015 75);
@@ -125,6 +144,23 @@
   --data-4t:oklch(0.86 0.09 225);
   --data-5t:oklch(0.86 0.09 95);
   --data-track:#2A241C;
+
+  --project-green:oklch(0.78 0.11 155);
+  --project-purple:oklch(0.78 0.11 300);
+  --project-orange:oklch(0.78 0.11 40);
+  --project-blue:oklch(0.78 0.11 225);
+  --project-yellow:oklch(0.78 0.11 95);
+  --project-teal:oklch(0.78 0.11 190);
+  --project-pink:oklch(0.78 0.11 350);
+  --project-indigo:oklch(0.78 0.11 262);
+  --project-green-t:oklch(0.86 0.09 155);
+  --project-purple-t:oklch(0.86 0.09 300);
+  --project-orange-t:oklch(0.86 0.09 40);
+  --project-blue-t:oklch(0.86 0.09 225);
+  --project-yellow-t:oklch(0.86 0.09 95);
+  --project-teal-t:oklch(0.86 0.09 190);
+  --project-pink-t:oklch(0.86 0.09 350);
+  --project-indigo-t:oklch(0.86 0.09 262);
 
   --bucket:oklch(0.42 0.02 75);
 

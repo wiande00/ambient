@@ -66,7 +66,9 @@ If Ambient is useful to you, a ⭐ on this repository helps other people find it
   from a security course on screen) is retried once on Claude Haiku 4.5, at its higher rate.
 - **Projects.** In **Settings › Projects**, add the things you work on, each with a short
   description and a few *hints* — words, window titles or paths that mark that project's
-  work. Anything that fits no project lands in *other*.
+  work. Anything that fits no project lands in *other*. Each project keeps one colour on
+  every screen and every day: pick it there, or leave it on *Auto* to take one by its
+  place in the list.
 
 ### Updates
 

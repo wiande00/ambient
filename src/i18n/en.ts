@@ -484,6 +484,23 @@ export const en = {
         descriptionPlaceholder: "One or two sentences on what work on this looks like.",
         hints: "Hints",
         hintsHint: "Words, window titles, paths, product names, comma-separated.",
+        color: "Colour",
+        colorHint: "How it looks on the day band, in the lists and on the week. Changing it relabels nothing.",
+        colorAuto: "Auto",
+        /** {color} is the colour the project gets by its place in the list. */
+        colorAutoTitle: "Automatic: {color}, by its place in the list",
+        /** {name} is another project already showing this colour. */
+        colorUsedBy: "also {name}",
+        colors: {
+          green: "Green",
+          purple: "Purple",
+          orange: "Orange",
+          blue: "Blue",
+          yellow: "Yellow",
+          teal: "Teal",
+          pink: "Pink",
+          indigo: "Indigo",
+        },
         remove: "Remove",
         add: "Add a project",
         empty: "No projects yet. Everything lands in Other until you add one.",

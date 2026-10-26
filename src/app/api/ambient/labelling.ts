@@ -78,12 +78,12 @@ export type LabelStore = Record<string, CachedLabel>;
  * turned back into: the prompt gives clock times to the minute, so two versions of an open
  * stretch can read the same while their edges differ by seconds.
  */
-export function keyCandidates(candidates: AmbientCandidate[], input: ChunkPromptInput, projectsRaw: string): KeyedCandidate[] {
+export function keyCandidates(candidates: AmbientCandidate[], input: ChunkPromptInput, projectsText: string): KeyedCandidate[] {
   const entries = new Map(input.candidates.map((entry) => [entry.index, entry]));
   return candidates.map((candidate) => {
     const entry = entries.get(candidate.index) ?? null;
     const keyed = entry ? { ...entry, edges: candidate.blocks.map((block) => block.from), end: candidate.to } : null;
-    const hash = keyed ? hashCandidate(MODEL, CHUNK_PROMPT, CHUNK_SCHEMA, projectsRaw, input.afk_threshold_minutes, keyed) : null;
+    const hash = keyed ? hashCandidate(MODEL, CHUNK_PROMPT, CHUNK_SCHEMA, projectsText, input.afk_threshold_minutes, keyed) : null;
     return { candidate, entry, hash };
   });
 }

@@ -16,7 +16,57 @@ export type AmbientProject = {
   description: string;
   /** Words, window titles, paths, product names that mark this project's work. */
   hints: string[];
+  /** The colour the person picked. Left out, the project gets one by its place in the list. */
+  color?: ProjectColor;
 };
+
+/**
+ * The colours a project can take, each a hue at the same lightness and chroma (the values
+ * live in the theme). Listed in the order automatic colours are handed out: the five most
+ * distinct first, then the three that sit between them.
+ */
+export const PROJECT_COLORS = ["green", "purple", "orange", "blue", "yellow", "teal", "pink", "indigo"] as const;
+export type ProjectColor = (typeof PROJECT_COLORS)[number];
+
+function isProjectColor(value: unknown): value is ProjectColor {
+  return (PROJECT_COLORS as readonly unknown[]).includes(value);
+}
+
+/**
+ * Every project's colour: the one picked, else the first not already picked or handed out,
+ * walking the list in order. It depends on the list alone, never on a day's hours, so a
+ * project looks the same on every screen and every day. Past eight, colours repeat.
+ */
+export function projectColors(projects: AmbientProject[]): Record<string, ProjectColor> {
+  const out: Record<string, ProjectColor> = {};
+  const used = new Set<ProjectColor>();
+  for (const project of projects) {
+    if (project.color) {
+      out[project.key] = project.color;
+      used.add(project.color);
+    }
+  }
+  let spare = 0;
+  for (const project of projects) {
+    if (out[project.key]) continue;
+    const free = PROJECT_COLORS.find((color) => !used.has(color));
+    const color = free ?? PROJECT_COLORS[spare++ % PROJECT_COLORS.length];
+    out[project.key] = color;
+    used.add(color);
+  }
+  return out;
+}
+
+/**
+ * The projects as the model reads them, as text: what the label cache is keyed on. Colours
+ * are left out, since they are for the screen and picking one must not relabel every day.
+ * Laid out the way `saveProjects` writes the file, so a file the app wrote keys exactly as
+ * its raw text did before colours existed.
+ */
+export function projectsKeyText(file: AmbientProjectsFile): string {
+  const projects = file.projects.map(({ key, name, description, hints }) => ({ key, name, description, hints }));
+  return `${JSON.stringify({ version: file.version, projects }, null, 2)}\n`;
+}
 
 export type AmbientProjectsFile = { version: 1; projects: AmbientProject[] };
 
@@ -74,11 +124,14 @@ export function parseProjectsFile(raw: string): AmbientProjectsFile {
     if (typeof project.name !== "string" || project.name.trim().length === 0) {
       throw new Error(`projects[${index}].name is required.`);
     }
+    // A colour the app does not know is dropped rather than refused: a typo in it should
+    // cost the colour, not the whole file and every project's hours with it.
     return {
       key: project.key,
       name: project.name.trim(),
       description: typeof project.description === "string" ? project.description.trim() : "",
       hints: Array.isArray(project.hints) ? project.hints.filter((h): h is string => typeof h === "string") : [],
+      ...(isProjectColor(project.color) ? { color: project.color } : {}),
     };
   });
 

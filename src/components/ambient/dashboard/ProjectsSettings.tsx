@@ -4,26 +4,35 @@ import { Card } from "@/ui/Card";
 import { Field } from "@/ui/Field";
 import { Input } from "@/ui/Input";
 import { Textarea } from "@/ui/Textarea";
-import { keyForName, type AmbientProject } from "@/lib/ambient/projects";
+import { keyForName, PROJECT_COLORS, projectColors, type AmbientProject, type ProjectColor } from "@/lib/ambient/projects";
 import type { AmbientProjectsResponse } from "@/lib/ambient/types";
 import { en } from "@/i18n/en";
 import { interpolate } from "@/i18n";
+import { colorFill } from "./palette";
 
 /**
  * The projects editor on the Settings screen: the list `~/.ambient/projects.json` holds,
- * each with a name, a description and hints for the model, plus add and remove. Keys are
- * derived from the name when a project is created and never change afterwards, since they
- * are what every cached chunk refers to. Saving writes the whole list through the projects
- * route, which validates it the same way the reader does.
+ * each with a name, a description and hints for the model and a colour for the screen,
+ * plus add and remove. Keys are derived from the name when a project is created and never
+ * change afterwards, since they are what every cached chunk refers to. Saving writes the
+ * whole list through the projects route, which validates it the same way the reader does.
  */
 
 const t = en.ambient.settings.projects;
 
-type Draft = { key: string; name: string; description: string; hints: string; isNew: boolean };
+/** `color` null is Auto: the project takes a colour by its place in the list. */
+type Draft = { key: string; name: string; description: string; hints: string; color: ProjectColor | null; isNew: boolean };
 type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved" } | { kind: "failed"; message: string };
 
 function toDraft(project: AmbientProject): Draft {
-  return { key: project.key, name: project.name, description: project.description, hints: project.hints.join(", "), isNew: false };
+  return {
+    key: project.key,
+    name: project.name,
+    description: project.description,
+    hints: project.hints.join(", "),
+    color: project.color ?? null,
+    isNew: false,
+  };
 }
 
 function toProject(draft: Draft): AmbientProject {
@@ -35,6 +44,7 @@ function toProject(draft: Draft): AmbientProject {
       .split(",")
       .map((hint) => hint.trim())
       .filter(Boolean),
+    ...(draft.color ? { color: draft.color } : {}),
   };
 }
 
@@ -68,6 +78,11 @@ export function ProjectsSettings() {
   }, []);
 
   const missingName = drafts?.some((draft) => draft.name.trim() === "") ?? false;
+  // What each project shows as, picked or automatic, live as the list is edited.
+  const shown = projectColors(drafts?.map(toProject) ?? []);
+  // What a project would get on Auto, which moves when another project picks its colour.
+  const autoColor = (index: number) =>
+    drafts ? projectColors(drafts.map((draft, i) => toProject(i === index ? { ...draft, color: null } : draft)))[drafts[index].key] : undefined;
 
   function update(index: number, patch: Partial<Draft>) {
     setDrafts((current) => {
@@ -86,7 +101,7 @@ export function ProjectsSettings() {
   function add() {
     setDrafts((current) => {
       const list = current ?? [];
-      return [...list, { key: keyForName("", list.map((d) => d.key)), name: "", description: "", hints: "", isNew: true }];
+      return [...list, { key: keyForName("", list.map((d) => d.key)), name: "", description: "", hints: "", color: null, isNew: true }];
     });
     setSave({ kind: "idle" });
   }
@@ -190,6 +205,16 @@ export function ProjectsSettings() {
               <Field label={t.hints} hint={t.hintsHint} htmlFor={`project-hints-${draft.key}`}>
                 <Input id={`project-hints-${draft.key}`} value={draft.hints} spellCheck={false} onChange={(event) => update(index, { hints: event.target.value })} />
               </Field>
+              <Field label={t.color} hint={t.colorHint}>
+                <ColorPicker
+                  color={draft.color}
+                  auto={autoColor(index)}
+                  usedBy={(color) =>
+                    drafts.filter((other) => other.key !== draft.key && shown[other.key] === color).map((other) => other.name.trim() || other.key)
+                  }
+                  onChange={(color) => update(index, { color })}
+                />
+              </Field>
             </Card>
           ))}
 
@@ -209,5 +234,55 @@ export function ProjectsSettings() {
         </form>
       )}
     </section>
+  );
+}
+
+/**
+ * Auto, then a swatch per colour. Auto's dot is the colour the project gets when nothing is
+ * picked, so leaving it there still says what the project will look like. A swatch another
+ * project already shows says so on hover; picking it anyway is allowed.
+ */
+function ColorPicker({
+  color,
+  auto,
+  usedBy,
+  onChange,
+}: {
+  color: ProjectColor | null;
+  auto: ProjectColor | undefined;
+  usedBy: (color: ProjectColor) => string[];
+  onChange: (color: ProjectColor | null) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label={t.color} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, padding: "2px 0" }}>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={color === null}
+        className="ambient-swatch-auto"
+        title={auto ? interpolate(t.colorAutoTitle, { color: t.colors[auto] }) : undefined}
+        onClick={() => onChange(null)}
+      >
+        <span aria-hidden style={{ width: 14, height: 14, borderRadius: 999, background: auto ? colorFill(auto) : "var(--paper-3)" }} />
+        {t.colorAuto}
+      </button>
+      {PROJECT_COLORS.map((option) => {
+        const others = usedBy(option);
+        const label = others.length > 0 ? `${t.colors[option]} · ${interpolate(t.colorUsedBy, { name: others.join(", ") })}` : t.colors[option];
+        return (
+          <button
+            key={option}
+            type="button"
+            role="radio"
+            aria-checked={color === option}
+            aria-label={label}
+            title={label}
+            className="ambient-swatch"
+            onClick={() => onChange(option)}
+            style={{ background: colorFill(option) }}
+          />
+        );
+      })}
+    </div>
   );
 }

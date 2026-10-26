@@ -11,6 +11,11 @@ const shell = (focus, invalid, disabled) => ({
   transition: 'border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard)',
 });
 
+/* The open list is drawn by the browser, not inside the field. With the select itself
+   transparent, Chromium on Windows paints that list on its default white while the options
+   keep the field's ink, which in dark mode is near-white too. Each option says both. */
+const optionStyle = { background: 'var(--surface-card)', color: 'var(--ink-1)' };
+
 /** Native select styled like the other fields. */
 export function Select({ options = [], invalid, disabled, placeholder, style, ...rest }) {
   const [focus, setFocus] = React.useState(false);
@@ -20,13 +25,16 @@ export function Select({ options = [], invalid, disabled, placeholder, style, ..
         {...rest} disabled={disabled}
         onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
         style={{
-          flex: 1, appearance: 'none', border: 'none', outline: 'none', background: 'transparent',
+          // minWidth 0: otherwise the longest option sets the select's width, and in a narrow
+          // column it pushes the chevron out past the field's border. No box shadow: the
+          // field around it shows focus, and the global focus ring drew a box inside it.
+          flex: 1, minWidth: 0, textOverflow: 'ellipsis', appearance: 'none', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent',
           fontFamily: 'var(--font-sans)', fontSize: 'var(--text-body-md)', color: 'var(--ink-1)', cursor: 'pointer',
         }}
       >
-        {placeholder ? <option value="">{placeholder}</option> : null}
+        {placeholder ? <option value="" style={optionStyle}>{placeholder}</option> : null}
         {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
+          <option key={o.value} value={o.value} style={optionStyle}>{o.label}</option>
         ))}
       </select>
       <span style={{ color: 'var(--text-muted)', display: 'flex', pointerEvents: 'none' }}><Icon name="chevron-down" size={18} /></span>

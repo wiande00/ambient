@@ -212,6 +212,45 @@ body {
   outline-offset: 2px;
 }
 
+/* A project's colour in Settings (`ProjectsSettings.tsx`): Auto, holding the colour the
+   project gets by its place in the list, then one swatch per colour. The picked one is
+   ringed in ink; outline rather than shadow, so the focus ring can still show beside it. */
+.ambient-swatch,
+.ambient-swatch-auto {
+  height: 26px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
+}
+.ambient-swatch {
+  width: 26px;
+  padding: 0;
+  border: none;
+}
+.ambient-swatch:hover {
+  transform: scale(1.12);
+}
+.ambient-swatch-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px 0 6px;
+  border: 1px solid var(--border-soft);
+  background: var(--panel);
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+}
+.ambient-swatch-auto:hover {
+  border-color: var(--paper-4);
+}
+.ambient-swatch[aria-checked="true"],
+.ambient-swatch-auto[aria-checked="true"] {
+  outline: 2px solid var(--ink-1);
+  outline-offset: 2px;
+}
+
 /* The band dims every stretch but the one under the pointer, so a single stretch can be
    picked out of a day without a legend or a click. */
 .ambient-band:hover > * {

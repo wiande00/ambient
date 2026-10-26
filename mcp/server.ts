@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { longestProjectStretch, type AmbientFocus } from "../src/lib/ambient/focus";
-import { keyForName, FALLBACK_BUCKETS, type AmbientProject } from "../src/lib/ambient/projects";
+import { keyForName, FALLBACK_BUCKETS, PROJECT_COLORS, projectColors, type AmbientProject } from "../src/lib/ambient/projects";
 import type { AmbientDayShape } from "../src/lib/ambient/shape";
 import type {
   AmbientChunksResponse,
@@ -87,12 +87,15 @@ async function saveProjects(projects: AmbientProject[]): Promise<AmbientProject[
 }
 
 function describeProjects(projects: AmbientProject[]) {
+  const colors = projectColors(projects);
   return {
-    projects: projects.map((p) => ({ key: p.key, name: p.name, description: p.description, hints: p.hints })),
+    projects: projects.map((p) => ({ key: p.key, name: p.name, description: p.description, hints: p.hints, color: colors[p.key], colorPicked: p.color !== undefined })),
     buckets: Object.entries(BUCKETS).map(([key, meaning]) => ({ key, meaning })),
-    note: "Chunks are labelled with one project key or one bucket. Editing projects relabels each day the next time it is opened.",
+    note: "Chunks are labelled with one project key or one bucket. Editing projects relabels each day the next time it is opened; a colour change relabels nothing.",
   };
 }
+
+const colorInput = z.enum(PROJECT_COLORS);
 
 const date = z
   .string()
@@ -407,12 +410,14 @@ server.registerTool(
       name: z.string().min(1).describe("Shown on screen, e.g. \"Thesis\"."),
       description: z.string().optional().describe("One or two sentences on what work on this project looks like."),
       hints: z.array(z.string()).optional().describe("Words, window titles, paths, product names that mark this project's work."),
+      color: colorInput.optional().describe("How it looks on screen. Left out, it gets the first colour no other project has."),
     },
   },
-  async ({ name, description, hints }) => {
+  async ({ name, description, hints, color }) => {
     const { projects } = await loadProjects();
     const key = keyForName(name, projects.map((p) => p.key));
-    const saved = await saveProjects([...projects, { key, name: name.trim(), description: (description ?? "").trim(), hints: hints ?? [] }]);
+    const added: AmbientProject = { key, name: name.trim(), description: (description ?? "").trim(), hints: hints ?? [], ...(color ? { color } : {}) };
+    const saved = await saveProjects([...projects, added]);
     return text({ added: key, ...describeProjects(saved) });
   },
 );
@@ -421,21 +426,34 @@ server.registerTool(
   "update_project",
   {
     title: "Update a project",
-    description: "Change a project's name, description or hints. Fields left out stay as they are; hints given replace the whole list. The key stays the same.",
+    description: "Change a project's name, description, hints or colour. Fields left out stay as they are; hints given replace the whole list. The key stays the same. A colour change only changes how the project looks; nothing is relabelled.",
     inputSchema: {
       key: z.string().describe("The project key, from list_projects."),
       name: z.string().min(1).optional(),
       description: z.string().optional(),
       hints: z.array(z.string()).optional(),
+      color: z
+        .union([colorInput, z.literal("auto")])
+        .optional()
+        .describe('A colour, or "auto" to let it take one by its place in the list.'),
     },
   },
-  async ({ key, name, description, hints }) => {
+  async ({ key, name, description, hints, color }) => {
     const { projects } = await loadProjects();
     const current = projects.find((p) => p.key === key);
     if (!current) return fail(`No project has the key "${key}". Keys: ${projects.map((p) => p.key).join(", ") || "(none)"}.`);
-    const next = projects.map((p) =>
-      p.key === key ? { ...p, name: name?.trim() ?? p.name, description: description?.trim() ?? p.description, hints: hints ?? p.hints } : p,
-    );
+    const next = projects.map((p): AmbientProject => {
+      if (p.key !== key) return p;
+      const { color: picked, ...rest } = p;
+      const nextColor = color === "auto" ? undefined : (color ?? picked);
+      return {
+        ...rest,
+        name: name?.trim() ?? p.name,
+        description: description?.trim() ?? p.description,
+        hints: hints ?? p.hints,
+        ...(nextColor ? { color: nextColor } : {}),
+      };
+    });
     return text({ updated: key, ...describeProjects(await saveProjects(next)) });
   },
 );

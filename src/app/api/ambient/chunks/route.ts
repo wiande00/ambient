@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { buildCandidates, projectTotals, toChunkInput, type ChunkPromptInput } from "@/lib/ambient/chunks";
 import type { AmbientDayMeasure } from "@/lib/ambient/intervals";
 import { attachThreads, threadTotals } from "@/lib/ambient/threads";
+import { projectColors } from "@/lib/ambient/projects";
 import type { AmbientChunksResponse } from "@/lib/ambient/types";
 import { EMPTY_USAGE, MAX_CALLS_KEPT, readChunkCache, updateChunkCache, type CachedChunks } from "../chunkCache";
 import { loadConfig } from "../config";
@@ -92,7 +93,7 @@ async function respond(date: string, mode: Mode): Promise<NextResponse> {
 
     const { candidates } = buildCandidates(day.measure, config.breakMinutes);
     const input = toChunkInput(candidates, projects.file.projects, config.afkSeconds);
-    const keyed = keyCandidates(candidates, input, projects.raw);
+    const keyed = keyCandidates(candidates, input, projects.keyText);
     const projectKeys = new Set(projects.file.projects.map((p) => p.key));
     const isToday = date === todayStamp();
     const cached = await readChunkCache(date);
@@ -185,6 +186,7 @@ async function respond(date: string, mode: Mode): Promise<NextResponse> {
       usage,
       projectsError: projects.error,
       projectNames: Object.fromEntries(projects.file.projects.map((p) => [p.key, p.name])),
+      projectColors: projectColors(projects.file.projects),
       labelProblem: labelProblem(apiKey),
     } satisfies AmbientChunksResponse);
   } catch (error) {
