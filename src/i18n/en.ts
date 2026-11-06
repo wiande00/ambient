@@ -418,8 +418,8 @@ export const en = {
         overridden: "Windows has turned this off in Settings › Apps › Startup. Turn it on there for this to take effect.",
       },
       excludeApps: {
-        label: "Never read text from these apps",
-        hint: "Process names, comma-separated. Password managers are excluded by default. Changing this restarts the collector.",
+        label: "Never read text from these apps or websites",
+        hint: "Comma-separated. Apps by process name (outlook), websites by address (reddit.com): a website in a browser is recorded as just its name, with no title or text. Password managers are excluded by default. Changing this restarts the collector.",
       },
       collector: {
         label: "Collector",

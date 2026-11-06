@@ -91,8 +91,11 @@ title, how long it had focus, and whether there was keyboard or mouse input (nev
 was typed). It also reads the **visible text** of that window through Windows UI
 Automation, the same interface screen readers use. That text is what gets sent to the
 Anthropic API when a stretch is labelled, so anything visible on screen can end up in a
-request. Password managers are excluded by default, and *Settings › Never read text from these apps*
-adds more apps.
+request. Password managers are excluded by default, and *Settings › Never read text from these apps or websites*
+adds more: an app by its process name (`outlook`), a website by its address (`reddit.com`).
+A website in a browser is then recorded as just its name, with no page title and no text; to
+tell which site a browser is showing, the collector reads its address bar, and only while a
+website is on that list.
 
 It never takes screenshots, logs keystrokes, reads the clipboard, browser history or files.
 The collector itself makes no network calls. The app makes two kinds: labelling requests to
@@ -252,7 +255,10 @@ text** of the focused window through Windows UI Automation, the same mechanism s
 use. That text is what the dashboard sends to the Anthropic API when it labels a chunk, so
 anything visible on screen in any app can end up in a log and in an API request. Password
 managers are excluded by default (`-ExcludeApps`); `-ContentApps` narrows extraction to an
-allowlist for a single run.
+allowlist for a single run. An `-ExcludeApps` entry with a dot in it (`reddit.com`) is a
+website too: in a browser, the address bar decides it, and a page on that site or a subdomain
+is written with the site as its title and no text. Its title is also dropped from other
+windows' text, since a browser's tab strip shows every open tab. The address is never written.
 
 It never captures screenshots, keystrokes, clipboard contents, browser history or file contents.
 

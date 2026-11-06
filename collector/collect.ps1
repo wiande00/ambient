@@ -19,6 +19,15 @@
 # app in isolation. It is still not a screenshot: no pixels are ever captured, read, or
 # stored, and there is still no keystroke logging and no clipboard access.
 #
+# Websites: an -ExcludeApps entry with a dot in it ("reddit.com") is a website as well. A
+# website runs inside the browser's process, so a process-name match can never catch it;
+# instead, while a browser is in front, the collector reads that browser's address bar to
+# tell which site it is showing. A page on an excluded site (or any subdomain of it) gets
+# no text read and its title is written as just the site, and the titles of those pages
+# are dropped from any other window's text (a browser's tab strip lists every open tab).
+# The address is used for that decision and nothing else: it is never written anywhere.
+# With no website in the list, the address bar is never read at all.
+#
 # What it does NOT read, for any app: keystrokes, clipboard contents, screenshots,
 # browser history, or file contents. The idle check (GetLastInputInfo) reports only
 # *whether* and *when* the last input happened, never what key was pressed or where the
@@ -62,7 +71,8 @@ param(
     [string[]]$ContentApps = $null,
     # Apps that never get content extraction, even in the default "every app" mode.
     # Defaults to a short credential-manager floor so a password vault isn't captured by
-    # accident; pass an empty array to remove even this floor.
+    # accident; pass an empty array to remove even this floor. An entry with a dot in it is
+    # also a website — see "Websites" at the top of this file.
     [string[]]$ExcludeApps = @("1password", "bitwarden", "keepass"),
     # A stretch with no keyboard or mouse input at least this long is written to the log as
     # its own "idle" line. This is a recording floor, not the idle threshold: the app applies
@@ -83,6 +93,30 @@ function Split-AppList([string[]]$Apps) {
 }
 $ContentApps = if ($null -ne $ContentApps) { Split-AppList $ContentApps } else { $null }
 $ExcludeApps = Split-AppList $ExcludeApps
+
+function ConvertTo-SiteRule {
+    <# The website an exclude entry names, as a bare host ("reddit.com"), or $null when the
+       entry is just an app. Forgiving about what gets pasted in: a scheme, "www.", a path
+       or a port are all dropped, so "https://www.reddit.com/r/x" still means reddit.com. #>
+    param([string]$Entry)
+    $site = ("" + $Entry).Trim().ToLowerInvariant()
+    $site = $site -replace '^[a-z][a-z0-9+.-]*://', ''
+    $site = ($site -split '[/?#]')[0]
+    $site = $site -replace ':\d+$', ''
+    $site = $site -replace '^www\.', ''
+    $site = $site.Trim('.')
+    if ($site -notmatch '\.' -or $site -match '\s') { return $null }
+    return $site
+}
+
+# Every entry still matches a process name exactly, as it always has; the dotted ones are
+# websites too. Nothing that worked before changes meaning.
+$ExcludeSites = @($ExcludeApps | ForEach-Object { ConvertTo-SiteRule $_ } | Where-Object { $_ } | Select-Object -Unique)
+
+# Process names whose windows have an address bar worth reading. Only these are checked
+# against website rules; any other app is never asked for an address.
+$BrowserApps = @("chrome", "msedge", "vivaldi", "brave", "opera", "firefox", "librewolf",
+    "waterfox", "floorp", "zen", "arc", "thorium", "chromium", "iexplore")
 
 function Test-ContentEnabled {
     <# Whether this app gets content extraction, given -ContentApps / -ExcludeApps. Not a
@@ -120,6 +154,22 @@ Add-Type -TypeDefinition $sig
 
 $UiaAvailable = $true
 $UiaLoadAttempted = $false
+
+function Initialize-Uia {
+    <# Loads the UI Automation assemblies on first use and says whether they are there. Lazy
+       on purpose — see the note in Get-VisibleText. #>
+    if (-not $script:UiaLoadAttempted) {
+        $script:UiaLoadAttempted = $true
+        try {
+            Add-Type -AssemblyName UIAutomationClient
+            Add-Type -AssemblyName UIAutomationTypes
+        } catch {
+            $script:UiaAvailable = $false
+            Write-Host "UI Automation assemblies unavailable — content extraction disabled, falling back to title-only for the rest of this run."
+        }
+    }
+    return $script:UiaAvailable
+}
 
 function Get-ForegroundWindowInfo {
     <# Returns @{ app; title; handle } for whatever window currently has focus, or $null
@@ -195,17 +245,7 @@ function Get-VisibleText {
        moments after being defined. Loading on first call sidesteps it entirely: by the
        time this ever runs, every function in the script already exists. #>
     param([Parameter(Mandatory)] [IntPtr]$Hwnd)
-    if (-not $script:UiaLoadAttempted) {
-        $script:UiaLoadAttempted = $true
-        try {
-            Add-Type -AssemblyName UIAutomationClient
-            Add-Type -AssemblyName UIAutomationTypes
-        } catch {
-            $script:UiaAvailable = $false
-            Write-Host "UI Automation assemblies unavailable — content extraction disabled, falling back to title-only for the rest of this run."
-        }
-    }
-    if (-not $UiaAvailable) { return $null }
+    if (-not (Initialize-Uia)) { return $null }
     try {
         $root = [System.Windows.Automation.AutomationElement]::FromHandle($Hwnd)
         if ($null -eq $root) { return $null }
@@ -249,6 +289,178 @@ function Get-VisibleText {
     } catch {
         return $null
     }
+}
+
+# --- websites in the exclude list ------------------------------------------------------
+
+function ConvertTo-UrlHost {
+    <# The host an address bar is showing, lowercase and without "www.", or $null when the
+       bar holds something that is not an address — a half-typed search, an internal page
+       like vivaldi://startpage, a file path. Browsers often drop the scheme from what they
+       display ("reddit.com/r/x"), so a missing one is assumed. #>
+    param([string]$Value)
+    $v = ("" + $Value).Trim()
+    if ($v.Length -eq 0 -or $v -match '\s') { return $null }
+    if ($v -notmatch '^[a-z][a-z0-9+.-]*://') { $v = "https://" + $v }
+    $uri = $null
+    if (-not [Uri]::TryCreate($v, [UriKind]::Absolute, [ref]$uri)) { return $null }
+    $name = $uri.Host.ToLowerInvariant().TrimEnd('.')
+    if ($name -notmatch '\.') { return $null }
+    return ($name -replace '^www\.', '')
+}
+
+function Read-ElementValue {
+    param($Element)
+    $pattern = $null
+    if ($Element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) {
+        return $pattern.Current.Value
+    }
+    return $null
+}
+
+function Find-AddressBar {
+    <# The address bar of a browser window, found through UI Automation like the visible
+       text is. The browsers' own markers first — Vivaldi's urlFieldInput, Firefox's (and
+       its forks') urlbar-input, Chromium's omnibox class, none of which change with the
+       UI language — and only then the first edit box that holds an address at all. #>
+    param([Parameter(Mandatory)] [IntPtr]$Hwnd)
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($Hwnd)
+    if ($null -eq $root) { return $null }
+    $isEdit = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Edit)
+    $edits = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $isEdit)
+    foreach ($edit in $edits) {
+        $id = $edit.Current.AutomationId
+        if ($id -eq "urlFieldInput" -or $id -eq "urlbar-input" -or $edit.Current.ClassName -eq "OmniboxViewViews") { return $edit }
+    }
+    foreach ($edit in $edits) {
+        if ($null -ne (ConvertTo-UrlHost (Read-ElementValue $edit))) { return $edit }
+    }
+    return $null
+}
+
+# hwnd -> @{ element; retryAt }. Finding the bar walks the whole window (a tenth of a second
+# or more on a big page); reading it once found is one cheap call, which is what lets this
+# run on every poll. A window with no bar to find is asked again only every 30 s.
+$script:AddressBars = @{}
+
+function Get-BrowserHost {
+    <# The host a browser window is showing, or $null when it cannot be told. #>
+    param([Parameter(Mandatory)] [IntPtr]$Hwnd)
+    if (-not (Initialize-Uia)) { return $null }
+    $key = $Hwnd.ToInt64()
+    for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        $entry = $script:AddressBars[$key]
+        if ($null -eq $entry) {
+            if ($script:AddressBars.Count -ge 32) { $script:AddressBars.Clear() }
+            $found = $null
+            try { $found = Find-AddressBar -Hwnd $Hwnd } catch { }
+            $entry = @{ element = $found; retryAt = (Get-Date).AddSeconds(30) }
+            $script:AddressBars[$key] = $entry
+        }
+        if ($null -eq $entry.element) {
+            if ((Get-Date) -lt $entry.retryAt) { return $null }
+            $script:AddressBars.Remove($key)
+            continue
+        }
+        try {
+            return (ConvertTo-UrlHost (Read-ElementValue $entry.element))
+        } catch {
+            # The element went away (the window rebuilt its toolbar); find it again.
+            $script:AddressBars.Remove($key)
+        }
+    }
+    return $null
+}
+
+function Test-TextNamesSite {
+    <# Whether a title or a line of text names an excluded site: the host itself
+       ("reddit.com"), or for a plain name.tld site the name as a word on its own
+       ("Reddit"). Short names are left out of the word match — "x.com" must not hide
+       every title with an x in it. Used only where the address cannot settle it. #>
+    param([string]$Text, [Parameter(Mandatory)] [string]$Site)
+    $t = ("" + $Text).ToLowerInvariant()
+    if ($t.Contains($Site)) { return $true }
+    $labels = $Site.Split('.')
+    if ($labels.Count -eq 2 -and $labels[0].Length -ge 4) {
+        return ($t -match ('(?<![a-z0-9])' + [regex]::Escape($labels[0]) + '(?![a-z0-9])'))
+    }
+    return $false
+}
+
+# Titles of hidden pages seen this run. A browser's tab strip is part of its window, so with
+# a hidden page open in a background tab its title would otherwise turn up in the text of
+# whatever page is in front. Kept in memory only, never written.
+$script:HiddenTitles = New-Object System.Collections.Generic.List[string]
+
+function Add-HiddenTitle {
+    param([string]$Title)
+    # A tab shows the page's title without the window's " - Vivaldi" suffix; keep both.
+    $page = ("" + $Title) -replace '\s+[-–—]\s+[^-–—]*$', ''
+    foreach ($candidate in @($Title, $page)) {
+        $t = ("" + $candidate).Trim()
+        if ($t.Length -ge 8 -and -not $script:HiddenTitles.Contains($t)) { $script:HiddenTitles.Add($t) }
+    }
+    while ($script:HiddenTitles.Count -gt 200) { $script:HiddenTitles.RemoveAt(0) }
+}
+
+function Resolve-HiddenSite {
+    <# Decides, for the window in front, whether it is showing an excluded website. Sets
+       on $Seen:
+         hidden       the site rule it matched, or $null
+         siteUnknown  a browser whose address could not be read, so no text may be read
+       and, for a hidden page, replaces $Seen.title with the site, so a run of Reddit pages
+       is written as one block called "reddit.com" and no page title reaches the log. #>
+    param([Parameter(Mandatory)] $Seen)
+    $Seen.hidden = $null
+    $Seen.siteUnknown = $false
+    $Seen.isBrowser = $BrowserApps -contains ("" + $Seen.app).ToLowerInvariant()
+    if ($ExcludeSites.Count -eq 0 -or -not $Seen.isBrowser) { return }
+
+    $urlHost = Get-BrowserHost -Hwnd $Seen.handle
+    if ($null -ne $urlHost) {
+        foreach ($site in $ExcludeSites) {
+            if ($urlHost -eq $site -or $urlHost.EndsWith("." + $site)) { $Seen.hidden = $site; break }
+        }
+    } else {
+        # No address to go by (the bar is being typed in, or could not be found): the title
+        # is all there is, and no text gets read until the address is back.
+        $Seen.siteUnknown = $true
+        foreach ($site in $ExcludeSites) {
+            if (Test-TextNamesSite -Text $Seen.title -Site $site) { $Seen.hidden = $site; break }
+        }
+    }
+    if ($null -ne $Seen.hidden) {
+        Add-HiddenTitle -Title $Seen.title
+        $Seen.title = $Seen.hidden
+    }
+}
+
+function Remove-HiddenLines {
+    <# Drops every line of extracted text that carries a hidden page's title, and, in a
+       browser, every line that names an excluded site — a tab, a search result, a link
+       to it. Returns $null when nothing is left. #>
+    param([string]$Text, [bool]$Browser = $false)
+    if ([string]::IsNullOrEmpty($Text)) { return $null }
+    $checkSites = $Browser -and $ExcludeSites.Count -gt 0
+    if ($script:HiddenTitles.Count -eq 0 -and -not $checkSites) { return $Text }
+    $kept = New-Object System.Collections.Generic.List[string]
+    foreach ($line in ($Text -split "`r?`n")) {
+        $drop = $false
+        foreach ($t in $script:HiddenTitles) {
+            if ($line.IndexOf($t, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $drop = $true; break }
+        }
+        if (-not $drop -and $checkSites) {
+            foreach ($site in $ExcludeSites) {
+                if (Test-TextNamesSite -Text $line -Site $site) { $drop = $true; break }
+            }
+        }
+        if (-not $drop) { $kept.Add($line) }
+    }
+    $out = ($kept -join "`n").Trim()
+    if ($out.Length -eq 0) { return $null }
+    return $out
 }
 
 function Get-AmbientLogPath {
@@ -499,6 +711,9 @@ if ($null -ne $ContentApps) {
 if ($ExcludeApps.Count -gt 0) {
     Write-Host "  except: $($ExcludeApps -join ', ')"
 }
+if ($ExcludeSites.Count -gt 0) {
+    Write-Host "  websites hidden in browsers (title written as the site, no text): $($ExcludeSites -join ', ')"
+}
 Write-Host "Writing to: $logPath"
 Write-Host "Idle runs of $IdleFloorSeconds s or more are recorded; the app decides what counts as idle."
 Write-Host "Press Ctrl+C to stop if this window has focus, or create this file to stop it from anywhere:"
@@ -731,6 +946,13 @@ try {
         }
         if ($null -eq $seen) { continue }
 
+        # Websites in the exclude list, settled from the browser's own address bar on every
+        # poll and before the block is matched: a hidden page's title is replaced by its
+        # site here, so the comparison below sees "reddit.com" and a run of Reddit pages
+        # stays one block, and a page that turns into Reddit without its title changing
+        # still opens a new one.
+        Resolve-HiddenSite -Seen $seen
+
         if ($null -eq $current -or $current.app -ne $seen.app -or $current.title -ne $seen.title) {
             if ($null -ne $current) {
                 $dwell = Close-CurrentBlock -Block $current -Path $log
@@ -747,9 +969,12 @@ try {
             $msSinceLive = [double]($liveSeconds * 1000)
         }
 
-        if (Test-ContentEnabled -App $seen.app) {
+        # A hidden website gets no text read, and nor does a browser whose address could not
+        # be read while websites are excluded — it could be showing one. The timer is left
+        # running in that case, so the read happens on the first poll the address is back.
+        if ((Test-ContentEnabled -App $seen.app) -and $null -eq $seen.hidden -and -not $seen.siteUnknown) {
             if ($current.msSinceContent -ge ($contentSeconds * 1000)) {
-                $extracted = Get-VisibleText -Hwnd $seen.handle
+                $extracted = Remove-HiddenLines -Text (Get-VisibleText -Hwnd $seen.handle) -Browser $seen.isBrowser
                 # Some apps' accessibility trees don't populate for an unregistered caller
                 # (notably Chromium-based browsers, which gate this behind their own
                 # accessibility setting) — the walk still "succeeds" but returns nothing
