@@ -52,7 +52,7 @@ export async function GET(request: Request) {
           const threshold = leftOnThreshold(config.breakMinutes);
           const leftOn = leftOnRanges(day.edited, threshold);
           const totals = withoutLeftOn(day.edited, leftOn);
-          const shape = dayShape(markLeftOn(daySegments(day.edited, config.breakMinutes), leftOn), totals.activeMinutes, threshold);
+          const shape = dayShape(markLeftOn(daySegments(day.edited, config.breakMinutes), leftOn), totals.activeMinutes, threshold, date === todayStamp());
           const chunks = cache ? attachThreads(withEdits(cache.chunks, day, config.breakMinutes), day.edited) : null;
           if (chunks) {
             allChunks.push(...chunks);

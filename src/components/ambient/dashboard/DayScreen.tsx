@@ -76,7 +76,7 @@ export function DayScreen({
   const since = formatSince(day.days[0] ?? day.date, day.today);
   const observed = day.status === "ready" ? interpolate(t.day.span, { from: clock(day.totals.from), to: clock(day.totals.to) }) : null;
   // What the band draws, which leaves off a computer left on at either end of the day.
-  const drawn = day.status === "ready" ? shownRange(day.segments, Date.parse(day.totals.from), Date.parse(day.totals.to)) : null;
+  const drawn = day.status === "ready" ? shownRange(day.segments, Date.parse(day.totals.from), Date.parse(day.totals.to), !viewingPast) : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 34 }}>
@@ -147,7 +147,7 @@ export function DayScreen({
                   {drawn ? interpolate(t.day.shapeRange, { from: clock(drawn.startMs), to: clock(drawn.endMs) }) : null}
                 </span>
               </div>
-              <DayBand band={day.band} segments={day.segments} chunks={ready?.chunks ?? []} fillFor={fillFor} />
+              <DayBand band={day.band} segments={day.segments} open={!viewingPast} chunks={ready?.chunks ?? []} fillFor={fillFor} />
               <Legend projects={(ready?.projects ?? []).map((total) => total.project)} names={names} fillFor={fillFor} />
             </section>
           ) : null}
@@ -155,6 +155,7 @@ export function DayScreen({
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 260px", gap: 40, alignItems: "start" }}>
             <ChunkList
               segments={day.segments}
+              open={!viewingPast}
               chunks={ready?.chunks ?? []}
               names={names}
               fillFor={fillFor}

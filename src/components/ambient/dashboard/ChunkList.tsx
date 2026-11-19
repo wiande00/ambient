@@ -62,6 +62,7 @@ type Labelling = { key: string; busy: boolean; note: string | null };
 
 export function ChunkList({
   segments,
+  open: dayOpen,
   chunks,
   names,
   fillFor,
@@ -70,6 +71,8 @@ export function ChunkList({
   editing,
 }: {
   segments: AmbientDaySegment[];
+  /** Today, still going: an absence at the end is listed, as the band draws it (`shownRange`). */
+  open: boolean;
   chunks: AmbientChunk[];
   names: Record<string, string>;
   fillFor: FillFor;
@@ -86,7 +89,7 @@ export function ChunkList({
   const restoringKey = restoring && editing && restoring.savedWith === editing.source ? restoring.key : null;
   // The band's edges: a computer left on before the first stretch or after the last gets no
   // row, only its mention under the figures.
-  const shown = shownRange(segments, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY);
+  const shown = shownRange(segments, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY, dayOpen);
   const beyondEdge = (segment: AmbientDaySegment) => Date.parse(segment.to) <= shown.startMs || Date.parse(segment.from) >= shown.endMs;
 
   const editor = (key: string) =>

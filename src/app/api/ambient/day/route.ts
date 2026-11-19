@@ -57,7 +57,7 @@ export async function GET(request: Request) {
         from: new Date(span.firstMs).toISOString(),
         to: new Date(span.lastMs).toISOString(),
       },
-      shape: dayShape(shown, totals.activeMinutes, threshold),
+      shape: dayShape(shown, totals.activeMinutes, threshold, date === today),
       segments: shown,
       candidates: candidates.map(({ blocks, ...rest }) => {
         void blocks;

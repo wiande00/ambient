@@ -85,6 +85,26 @@ function isStretch(segment: AmbientDaySegment): boolean {
 }
 
 /**
+ * The first and last stretch of work, as indices into `segments`; `null` on a day with none.
+ *
+ * On a day still going (`open`: today), the last segment counts as a stretch however short
+ * when it is work: it is the one being done right now, not a window that flashed up as the
+ * machine woke. Otherwise sitting back down after a long absence moved nothing for the first
+ * minute, and the page's next refresh could be a minute further off still.
+ */
+function stretchBounds(segments: AmbientDaySegment[], open: boolean): { first: number; last: number } | null {
+  const counts = (segment: AmbientDaySegment, index: number) =>
+    isStretch(segment) || (open && index === segments.length - 1 && segment.kind === "candidate");
+  const first = segments.findIndex(counts);
+  if (first === -1) return null;
+  let last = first;
+  segments.forEach((segment, index) => {
+    if (counts(segment, index)) last = index;
+  });
+  return { first, last };
+}
+
+/**
  * The part of the day worth drawing: `startMs`–`endMs`, less a computer left on at either
  * end. Left on overnight, the day opens at midnight with hours nobody was at, and drawn in
  * proportion they squeeze the morning's work into a sliver at the far edge of the band. So
@@ -93,18 +113,25 @@ function isStretch(segment: AmbientDaySegment): boolean {
  * open and close the span. A left-on break between two stretches stays: it is part of the
  * day's shape, and the span counts it.
  *
+ * On a day still going (`open`: today) only the start is trimmed; see below.
+ *
  * Drawing only. The time is still in the day, said once as left on.
  */
-export function shownRange(segments: AmbientDaySegment[], startMs: number, endMs: number): { startMs: number; endMs: number } {
-  const first = segments.findIndex(isStretch);
-  if (first === -1) return { startMs, endMs };
-  let last = first;
-  segments.forEach((segment, index) => {
-    if (isStretch(segment)) last = index;
-  });
+export function shownRange(
+  segments: AmbientDaySegment[],
+  startMs: number,
+  endMs: number,
+  open = false,
+): { startMs: number; endMs: number } {
+  const bounds = stretchBounds(segments, open);
+  if (bounds === null) return { startMs, endMs };
+  const { first, last } = bounds;
   const leftOn = (segment: AmbientDaySegment) => segment.kind === "break" && segment.leftOn === true;
   const from = segments.slice(0, first).some(leftOn) ? Math.max(startMs, Date.parse(segments[first].from)) : startMs;
-  const to = segments.slice(last + 1).some(leftOn) ? Math.min(endMs, Date.parse(segments[last].to)) : endMs;
+  // Today's far edge is now, not an edge: an absence still in progress is drawn up to the
+  // present. Trimmed, the band and the list stood still at the moment the person got up,
+  // for as long as they were away — the dashboard looked frozen rather than empty.
+  const to = !open && segments.slice(last + 1).some(leftOn) ? Math.min(endMs, Date.parse(segments[last].to)) : endMs;
   return from < to ? { startMs: from, endMs: to } : { startMs, endMs };
 }
 
@@ -113,13 +140,10 @@ export function shownRange(segments: AmbientDaySegment[], startMs: number, endMs
  * machine spent it: idle, locked, asleep — is a break when shorter than the left-on
  * threshold, and time away otherwise. A stretch the person removed is neither.
  */
-export function dayShape(segments: AmbientDaySegment[], activeMinutes: number, thresholdMinutes: number): AmbientDayShape {
-  const first = segments.findIndex(isStretch);
-  if (first === -1) return { span: null, breaks: { count: 0, minutes: 0 }, density: null };
-  let last = first;
-  segments.forEach((segment, index) => {
-    if (isStretch(segment)) last = index;
-  });
+export function dayShape(segments: AmbientDaySegment[], activeMinutes: number, thresholdMinutes: number, open = false): AmbientDayShape {
+  const bounds = stretchBounds(segments, open);
+  if (bounds === null) return { span: null, breaks: { count: 0, minutes: 0 }, density: null };
+  const { first, last } = bounds;
 
   let count = 0;
   let breakMinutes = 0;

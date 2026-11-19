@@ -65,6 +65,7 @@ type Segment = {
 export function DayBand({
   band,
   segments,
+  open,
   chunks,
   fillFor,
   style,
@@ -72,6 +73,8 @@ export function DayBand({
   band: AmbientTimeline;
   /** The day's cut: candidates, breaks and away gaps. */
   segments: AmbientDaySegment[];
+  /** Today, still going: an absence at the end runs to now rather than being cut off (`shownRange`). */
+  open: boolean;
   /** Labelled chunks. Empty until the read lands — the band still draws. */
   chunks: AmbientChunk[];
   fillFor: FillFor;
@@ -80,7 +83,7 @@ export function DayBand({
   const bandStartMs = new Date(band.start).getTime();
   const bandEndMs = new Date(band.end).getTime();
   // Pieces are built across everything observed, then cut to the part worth drawing.
-  const { startMs, endMs } = shownRange(segments, bandStartMs, bandEndMs);
+  const { startMs, endMs } = shownRange(segments, bandStartMs, bandEndMs, open);
   const totalMs = endMs - startMs;
   if (!(totalMs > 0)) return null;
 
