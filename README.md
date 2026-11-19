@@ -186,6 +186,12 @@ When a chunk is wrong, fix it in the list under *What you did*:
 - **Edit.** The pencil on a chunk opens it in place: change the sentence, the project or the
   times. *Count the idle time as active* turns the whole stretch into work, for the twenty
   minutes you spent writing on paper while the keyboard sat untouched.
+- **Add-ons.** *Time on another project* in the editor says that some minutes of the stretch
+  went to another project, without saying when: an hour of thesis work with ten minutes on a
+  course in it. The minutes come out of the stretch's own project's active time instead of
+  being added to the day, and the card shows them as "also Course 10 min". The stretch's own
+  project has to keep the most of it. A card where Ambient already split some minutes off
+  opens with those as add-ons, so saving an edit keeps them.
 - **Add.** *Add a stretch* beside the heading, or *Add* on a break or a gap, records work the
   screen did not show. An added stretch counts as active on its project whatever the screen
   showed then.
@@ -199,7 +205,8 @@ labels the day as the collector saw it, so a correction costs no API call and mo
 anywhere else in the day. The day's figures, band, chunks and the week's totals are all
 drawn with the edits applied. A time typed within a minute of a real edge in the day (a
 chunk's, a break's) snaps to that edge. Edits live in `~/.ambient/edits.json`. The MCP
-connector has `edit_chunk`, `add_chunk`, `delete_chunk` and `undo_chunk_edits`.
+connector has `edit_chunk`, `add_chunk`, `delete_chunk` and `undo_chunk_edits`; the first two
+take add-ons as `addOns`.
 
 ## Finishing a day
 

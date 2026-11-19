@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { daySegments } from "@/lib/ambient/chunks";
-import { snapToEdge, type ChunkEditsFile, type EditOp } from "@/lib/ambient/edits";
+import { normaliseAddOns, snapToEdge, type AddOn, type ChunkEditsFile, type EditOp } from "@/lib/ambient/edits";
 import { FALLBACK_BUCKETS, isFallbackBucket } from "@/lib/ambient/projects";
 import type { AmbientEditsResponse } from "@/lib/ambient/types";
 import { readChunkCache } from "../chunkCache";
@@ -16,9 +16,11 @@ export const runtime = "nodejs";
  * The person's corrections to a day's chunks (`lib/ambient/edits.ts`). `GET ?date=` lists
  * the edits touching that day. `PUT` makes one:
  *
- * - `{date, op: "label", from, to, project, label, active, clear?}` says what `from`–`to`
- *   was, overriding the model there; `active` counts all of it as worked; `clear` is the
- *   stretch being edited, forgotten first so moving its edges leaves nothing behind.
+ * - `{date, op: "label", from, to, project, label, active, addOns?, clear?}` says what
+ *   `from`–`to` was, overriding the model there; `active` counts all of it as worked;
+ *   `addOns` (`[{project, minutes}]`) are minutes of it that went to other projects, taken
+ *   out of its own; `clear` is the stretch being edited, forgotten first so moving its edges
+ *   leaves nothing behind.
  * - `{date, op: "remove", from, to}` takes the stretch out of the day.
  * - `{date, op: "revert", from, to}` forgets every edit inside it.
  *
@@ -64,11 +66,45 @@ type Body = {
   project?: unknown;
   label?: unknown;
   active?: unknown;
+  addOns?: unknown;
   clear?: unknown;
 };
 
 const MAX_LABEL_CHARS = 300;
 const MIN_STRETCH_MS = 60_000;
+/** A card hides "also" lines under a minute, so an add-on smaller than that would vanish. */
+const MIN_ADD_ON_MINUTES = 1;
+const MAX_ADD_ONS = 6;
+
+/**
+ * The add-ons a request asks for, or a message saying what is wrong with them. Each names a
+ * known project other than the stretch's own; the stretch's own project still has to hold
+ * the most of it, since its colour and sentence are what the card claims — a stretch mostly
+ * spent on something else should say so, with the rest as add-ons.
+ */
+function parseAddOns(value: unknown, project: string, stretchMinutes: number, known: (key: string) => boolean): AddOn[] | string {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) return "Expected addOns as a list of {project, minutes}.";
+  if (value.length > MAX_ADD_ONS) return `At most ${MAX_ADD_ONS} add-ons on one stretch.`;
+  for (const entry of value) {
+    const item = entry && typeof entry === "object" ? (entry as { project?: unknown; minutes?: unknown }) : {};
+    const key = typeof item.project === "string" ? item.project.trim() : "";
+    if (!key) return "Each add-on needs a project.";
+    if (!known(key)) return `Unknown project "${key}" in an add-on.`;
+    if (key === project) return "An add-on is time on another project than the stretch's own.";
+    if (typeof item.minutes !== "number" || !Number.isFinite(item.minutes) || item.minutes < MIN_ADD_ON_MINUTES) {
+      return `Each add-on needs at least ${MIN_ADD_ON_MINUTES} minute.`;
+    }
+  }
+  const addOns = normaliseAddOns(value, project);
+  const total = addOns.reduce((sum, addOn) => sum + addOn.minutes, 0);
+  const left = stretchMinutes - total;
+  const outweighs = addOns.find((addOn) => addOn.minutes > left);
+  if (outweighs) {
+    return `The add-ons come to ${Math.round(total)} min of a ${Math.round(stretchMinutes)} min stretch, leaving its own project less than ${outweighs.project}. Make the project the one that held the most, and add the rest as add-ons.`;
+  }
+  return addOns;
+}
 
 function instant(value: unknown): number | null {
   if (typeof value !== "string") return null;
@@ -126,13 +162,16 @@ export async function PUT(request: Request) {
     if (op === "label") {
       const project = typeof body.project === "string" && body.project.trim() ? body.project.trim() : "other";
       const projects = await loadProjects();
-      if (!isFallbackBucket(project) && !projects.file.projects.some((p) => p.key === project)) {
-        const known = [...projects.file.projects.map((p) => p.key), ...FALLBACK_BUCKETS].join(", ");
-        return bad(`Unknown project "${project}". Known: ${known}.`);
+      const known = (key: string) => isFallbackBucket(key) || projects.file.projects.some((p) => p.key === key);
+      if (!known(project)) {
+        const keys = [...projects.file.projects.map((p) => p.key), ...FALLBACK_BUCKETS].join(", ");
+        return bad(`Unknown project "${project}". Known: ${keys}.`);
       }
       const label = typeof body.label === "string" ? body.label.trim().replace(/\s+/g, " ") : "";
       if (!label) return bad("Say what the stretch was: a sentence is needed.");
       if (label.length > MAX_LABEL_CHARS) return bad(`Keep the sentence under ${MAX_LABEL_CHARS} characters.`);
+      const addOns = parseAddOns(body.addOns, project, (toMs - fromMs) / 60_000, known);
+      if (typeof addOns === "string") return bad(addOns);
       const clear = body.clear && typeof body.clear === "object" ? (body.clear as { from?: unknown; to?: unknown }) : null;
       const clearFrom = clear ? instant(clear.from) : null;
       const clearTo = clear ? instant(clear.to) : null;
@@ -143,6 +182,7 @@ export async function PUT(request: Request) {
         project,
         label,
         active: body.active === true,
+        ...(addOns.length > 0 ? { addOns } : {}),
         ...(clearFrom !== null && clearTo !== null && clearTo > clearFrom ? { clear: { fromMs: clearFrom, toMs: clearTo } } : {}),
       };
     } else {

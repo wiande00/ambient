@@ -61,7 +61,8 @@ export function threadSlices(day: AmbientDayMeasure, fromMs: number, toMs: numbe
  */
 export function attachThreads(chunks: AmbientChunk[], day: AmbientDayMeasure): (AmbientChunk & { threads: AmbientThreadLine[] })[] {
   return chunks.map((chunk) => {
-    const lines = chunk.projects?.length ? chunk.projects : [{ project: chunk.project, from: chunk.from, to: chunk.to }];
+    // An add-on line has no length on the clock, so no thread ran in it.
+    const lines = chunk.projects?.length ? chunk.projects.filter((line) => !line.addOn) : [{ project: chunk.project, from: chunk.from, to: chunk.to }];
     const all: AmbientThreadLine[] = [];
     for (const line of lines) {
       for (const slice of threadSlices(day, Date.parse(line.from), Date.parse(line.to))) {

@@ -187,8 +187,10 @@ body {
 }
 
 /* "Label now" on an unlabelled card. Always visible, unlike the row actions: it is the
-   thing to do with a card that has nothing else on it. */
-.ambient-label-now {
+   thing to do with a card that has nothing else on it. The editor's "Time on another
+   project" is the same quiet pill. */
+.ambient-label-now,
+.ambient-add-on-add {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -203,11 +205,13 @@ body {
   cursor: pointer;
   transition: border-color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard);
 }
-.ambient-label-now:hover {
+.ambient-label-now:hover,
+.ambient-add-on-add:hover {
   border-color: var(--paper-4);
   background: var(--rule-2);
 }
-.ambient-label-now:focus-visible {
+.ambient-label-now:focus-visible,
+.ambient-add-on-add:focus-visible {
   outline: 2px solid var(--ink-1);
   outline-offset: 2px;
 }

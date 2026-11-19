@@ -250,6 +250,18 @@ export const en = {
       countActiveHint: "For time spent on paper or in a book while the keyboard sat untouched.",
       /** Under an added stretch's fields. */
       addHint: "Counts as active work on this project, whatever the screen showed.",
+      /** Add-ons: smaller amounts of the stretch that went to other projects, without a time. */
+      addOnsHeading: "Also spent",
+      addOnAdd: "Time on another project",
+      addOnMinutes: "Minutes",
+      addOnProject: "Add-on project",
+      addOnRemove: "Remove this add-on",
+      /** {project} is the stretch's own project's name. */
+      addOnsHint: "Minutes somewhere in this stretch. They come out of {project}'s active time rather than adding to the day.",
+      addOnMinutesInvalid: "Give each add-on at least a minute.",
+      addOnSameProject: "An add-on has to be a different project from the stretch's own.",
+      /** {project} is the stretch's own project's name. */
+      addOnTooMuch: "{project} has to keep the most of the stretch. If most of it was something else, make that the project and add the rest here.",
       save: "Save",
       saving: "Saving…",
       cancel: "Cancel",

@@ -105,6 +105,13 @@ export type AmbientProjectSplit = {
   minutes: number;
   activeMinutes: number;
   idleMinutes: number;
+  /**
+   * Minutes the person said went to this project somewhere in the stretch, with no place on
+   * the clock (`edits.ts` `AddOn`): `from` and `to` are both the stretch's end, and the
+   * minutes come out of the stretch's own line. Counted in every total like any other line;
+   * left out of anything that reads the clock.
+   */
+  addOn?: true;
 };
 
 export type AmbientChunk = {
@@ -119,6 +126,7 @@ export type AmbientChunk = {
    * stretch was one project, which is most of them. This is what `projectTotals` counts, so
    * a mixed stretch no longer lands whole on its majority project. Absent on chunks assembled
    * before this existed; the totals then fall back to `project` and behave as they used to.
+   * An edited stretch may end with `addOn` lines of no length, which the ranges do not tile.
    */
   projects?: AmbientProjectSplit[];
   /** The specific thing inside the project, a few words. Empty when unlabelled. */

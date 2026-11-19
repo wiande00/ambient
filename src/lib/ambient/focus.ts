@@ -167,7 +167,8 @@ export function longestProjectStretch(chunks: AmbientChunk[]): AmbientProjectStr
     .filter((chunk) => chunk.label !== null)
     .flatMap((chunk) =>
       chunk.projects?.length
-        ? chunk.projects
+        ? // An add-on was somewhere in its stretch, not anywhere in particular: no stretch of its own.
+          chunk.projects.filter((line) => !line.addOn)
         : [{ project: chunk.project, from: chunk.from, to: chunk.to, minutes: chunk.minutes, activeMinutes: chunk.activeMinutes, idleMinutes: chunk.idleMinutes }],
     )
     .sort((a, b) => Date.parse(a.from) - Date.parse(b.from));

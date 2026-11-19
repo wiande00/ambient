@@ -2,8 +2,10 @@ import { useId, useState, type KeyboardEvent } from "react";
 import { Button } from "@/ui/Button";
 import { Checkbox } from "@/ui/Checkbox";
 import { Field } from "@/ui/Field";
+import { Icon } from "@/ui/Icon";
 import { Input } from "@/ui/Input";
 import { Select } from "@/ui/Select";
+import type { AddOn } from "@/lib/ambient/edits";
 import { clock, formatDuration } from "@/lib/ambient/format";
 import type { AmbientEditsResponse } from "@/lib/ambient/types";
 import { en } from "@/i18n/en";
@@ -16,6 +18,11 @@ import type { FillFor } from "./palette";
  * same form over a break, a gap or any times typed in; an added stretch always counts as
  * worked, since it is time the screen did not show as work.
  *
+ * Under the project go the add-ons: a few minutes of the stretch that went to another
+ * project, with no time of their own — "and ten minutes on the course" — so a mostly-one-
+ * thing stretch need not be cut in two to say so. They come out of the stretch's own
+ * project; the form keeps that project holding the most.
+ *
  * Times are typed as clock minutes, but a stretch's real edges are to the second. An
  * untouched time is sent as the exact edge it came from, and the server takes a typed one
  * within a minute of a real edge to mean that edge, so neither leaves a sliver behind.
@@ -23,7 +30,10 @@ import type { FillFor } from "./palette";
 
 const t = en.ambient.edit;
 
-export type EditorDraft = { from: string; to: string; project: string; label: string; active: boolean };
+export type EditorDraft = { from: string; to: string; project: string; label: string; active: boolean; addOns: AddOn[] };
+
+/** One add-on as typed: the minutes stay text until saved, so a half-typed number is not fought over. */
+type AddOnRow = { key: number; project: string; minutes: string };
 
 export type EditorTarget =
   | { mode: "add"; initial: EditorDraft }
@@ -56,12 +66,39 @@ export function ChunkEditor({
   const [project, setProject] = useState(initial.project);
   const [label, setLabel] = useState(initial.label);
   const [active, setActive] = useState(initial.active);
+  const [addOns, setAddOns] = useState<AddOnRow[]>(() => initial.addOns.map((addOn, i) => ({ key: i, project: addOn.project, minutes: String(addOn.minutes) })));
+  const [nextKey, setNextKey] = useState(initial.addOns.length);
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
 
   const from = resolveClock(date, fromClock, initial.from, false);
   const to = resolveClock(date, toClock, initial.to, true);
   const minutes = from && to ? (Date.parse(to) - Date.parse(from)) / 60_000 : null;
+  const projectName = projects.find((option) => option.value === project)?.label ?? project;
+
+  function addAddOn() {
+    // The first project not already in the stretch, so a new row starts somewhere useful.
+    const taken = new Set([project, ...addOns.map((row) => row.project)]);
+    const next = projects.find((option) => !taken.has(option.value)) ?? projects.find((option) => option.value !== project);
+    setAddOns([...addOns, { key: nextKey, project: next?.value ?? "other", minutes: "" }]);
+    setNextKey(nextKey + 1);
+  }
+
+  function updateAddOn(key: number, change: Partial<Omit<AddOnRow, "key">>) {
+    setAddOns(addOns.map((row) => (row.key === key ? { ...row, ...change } : row)));
+  }
+
+  /** The add-ons ready to send, or the reason they are not. */
+  function checkedAddOns(stretchMinutes: number): AddOn[] | string {
+    const parsed = addOns.map((row) => ({ project: row.project, minutes: Number(row.minutes.replace(",", ".")) }));
+    if (parsed.some((addOn) => !Number.isFinite(addOn.minutes) || addOn.minutes < 1)) return t.addOnMinutesInvalid;
+    if (parsed.some((addOn) => addOn.project === project)) return t.addOnSameProject;
+    const byProject = new Map<string, number>();
+    for (const addOn of parsed) byProject.set(addOn.project, (byProject.get(addOn.project) ?? 0) + addOn.minutes);
+    const total = parsed.reduce((sum, addOn) => sum + addOn.minutes, 0);
+    if ([...byProject.values()].some((each) => each > stretchMinutes - total)) return interpolate(t.addOnTooMuch, { project: projectName });
+    return [...byProject].map(([key, each]) => ({ project: key, minutes: each }));
+  }
 
   async function send(kind: Exclude<Busy, null>, body: Record<string, unknown>) {
     setBusy(kind);
@@ -94,6 +131,11 @@ export function ChunkEditor({
       setError(t.sentenceRequired);
       return;
     }
+    const extra = checkedAddOns(minutes);
+    if (typeof extra === "string") {
+      setError(extra);
+      return;
+    }
     void send("save", {
       op: "label",
       from,
@@ -101,6 +143,7 @@ export function ChunkEditor({
       project,
       label: label.trim(),
       active: target.mode === "add" ? true : active,
+      addOns: extra,
       ...(target.mode === "edit" ? { clear: { from: target.original.from, to: target.original.to } } : {}),
     });
   }
@@ -166,6 +209,58 @@ export function ChunkEditor({
         <Field label={t.project} style={{ maxWidth: 320 }}>
           <Select aria-label={t.project} options={projects} value={project} disabled={disabled} onChange={(event: { target: { value: string } }) => setProject(event.target.value)} />
         </Field>
+
+        <div role="group" aria-label={t.addOnsHeading} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {addOns.length > 0 ? (
+            <>
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-body-sm)", fontWeight: "var(--weight-semibold)", color: "var(--ink-2)" }}>{t.addOnsHeading}</span>
+              {addOns.map((row, index) => (
+                <div key={row.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: fillFor(row.project), flex: "0 0 auto" }} />
+                  <Select
+                    aria-label={t.addOnProject}
+                    options={projects}
+                    value={row.project}
+                    disabled={disabled}
+                    onChange={(event: { target: { value: string } }) => updateAddOn(row.key, { project: event.target.value })}
+                    style={{ flex: "1 1 auto", maxWidth: 296, minWidth: 0 }}
+                  />
+                  <Input
+                    type="number"
+                    size="sm"
+                    min={1}
+                    step={1}
+                    inputMode="numeric"
+                    aria-label={t.addOnMinutes}
+                    placeholder="10"
+                    value={row.minutes}
+                    disabled={disabled}
+                    autoFocus={index === addOns.length - 1 && row.minutes === ""}
+                    onChange={(event: { target: { value: string } }) => updateAddOn(row.key, { minutes: event.target.value })}
+                    style={{ width: 96, flex: "0 0 auto" }}
+                  />
+                  <span style={{ fontSize: 13, color: "var(--ink-3)" }}>min</span>
+                  <button
+                    type="button"
+                    aria-label={t.addOnRemove}
+                    title={t.addOnRemove}
+                    disabled={disabled}
+                    onClick={() => setAddOns(addOns.filter((other) => other.key !== row.key))}
+                    className="ambient-row-action ambient-row-action-on"
+                    style={{ width: 28, height: 28 }}
+                  >
+                    <Icon name="x" size={14} />
+                  </button>
+                </div>
+              ))}
+              <span style={{ fontSize: 13, color: "var(--ink-3)", lineHeight: 1.5 }}>{interpolate(t.addOnsHint, { project: projectName })}</span>
+            </>
+          ) : null}
+          <button type="button" onClick={addAddOn} disabled={disabled} className="ambient-add-on-add" style={{ alignSelf: "flex-start" }}>
+            <Icon name="plus" size={13} />
+            {t.addOnAdd}
+          </button>
+        </div>
 
         {target.mode === "edit" ? (
           <Checkbox label={t.countActive} description={t.countActiveHint} checked={active} disabled={disabled} onChange={(checked: boolean) => setActive(checked)} />

@@ -110,6 +110,19 @@ const time = (what: string) =>
     .min(1)
     .describe(`${what}: a local clock time on the date, "HH:MM" or "HH:MM:SS" ("24:00" for midnight at its end), or a full ISO instant as get_day gives it.`);
 
+const addOns = z
+  .array(
+    z.object({
+      project: z.string().describe("A project key from list_projects, or the bucket other; not the stretch's own project."),
+      minutes: z.number().min(1).describe("Minutes of the stretch spent on it."),
+    }),
+  )
+  .max(6)
+  .optional()
+  .describe(
+    "Smaller amounts of time inside the stretch that went to other projects, without saying when — e.g. 10 minutes on a course inside an hour of thesis work. Taken out of the stretch's own project's active time, never added on top, so the day's totals stay the same. The stretch's own project must still hold the most of it. Replaces whatever the stretch split off before (alsoProjects in get_day): pass those again to keep them, leave out for none.",
+  );
+
 function localToday(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -486,9 +499,10 @@ server.registerTool(
       project: z.string().optional().describe("A project key from list_projects, or the bucket other."),
       sentence: z.string().optional().describe("One plain past-tense sentence saying what the stretch was."),
       countIdleAsActive: z.boolean().optional().describe("Count the whole stretch as worked, idle time included. Default false."),
+      addOns,
     },
   },
-  async ({ date: requested, from, to, project, sentence, countIdleAsActive }) => {
+  async ({ date: requested, from, to, project, sentence, countIdleAsActive, addOns: also }) => {
     const at = stretch(requested, from, to);
     if (typeof at === "string") return fail(at);
     let label = sentence?.trim();
@@ -508,7 +522,7 @@ server.registerTool(
       }
     }
     if (!label) return fail("Give a sentence: the stretch has no label to keep.");
-    return editDay(at.day, { op: "label", from: at.from, to: at.to, project: key ?? "other", label, active: countIdleAsActive === true });
+    return editDay(at.day, { op: "label", from: at.from, to: at.to, project: key ?? "other", label, active: countIdleAsActive === true, addOns: also ?? [] });
   },
 );
 
@@ -524,12 +538,13 @@ server.registerTool(
       to: time("End"),
       project: z.string().describe("A project key from list_projects, or the bucket other."),
       sentence: z.string().min(1).describe("One plain past-tense sentence saying what was done, e.g. \"Worked through chapter 4 exercises on paper\"."),
+      addOns,
     },
   },
-  async ({ date: requested, from, to, project, sentence }) => {
+  async ({ date: requested, from, to, project, sentence, addOns: also }) => {
     const at = stretch(requested, from, to);
     if (typeof at === "string") return fail(at);
-    return editDay(at.day, { op: "label", from: at.from, to: at.to, project, label: sentence, active: true });
+    return editDay(at.day, { op: "label", from: at.from, to: at.to, project, label: sentence, active: true, addOns: also ?? [] });
   },
 );
 

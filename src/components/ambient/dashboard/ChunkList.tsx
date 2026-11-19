@@ -194,7 +194,7 @@ export function ChunkList({
                   onClick={() =>
                     setOpen({
                       key,
-                      target: { mode: "add", initial: { from: segment.from, to: segment.to, project: defaultProject(before), label: "", active: true } },
+                      target: { mode: "add", initial: { from: segment.from, to: segment.to, project: defaultProject(before), label: "", active: true, addOns: [] } },
                     })
                   }
                 />
@@ -246,6 +246,9 @@ export function ChunkList({
                             project: chunk.label === null ? defaultProject(lastLabelledBefore(chunks, chunk)) : chunk.project,
                             label: chunk.label ?? "",
                             active: chunk.edit?.active ?? false,
+                            // What the card already says went elsewhere — the person's add-ons, or
+                            // the model's split — so saving keeps it unless they take it out.
+                            addOns: chunk.label === null ? [] : otherProjects(chunk).map((other) => ({ project: other.project, minutes: Math.round(other.activeMinutes) })),
                           },
                           original: { from: chunk.from, to: chunk.to, edited: chunk.edit !== undefined },
                         },
@@ -276,7 +279,7 @@ function addDefaults(editing: ChunkEditing, chunks: AmbientChunk[], defaultProje
   const toMs = Math.floor(endMs / 60_000) * 60_000;
   const fromMs = Math.max(dayStartMs, toMs - 30 * 60_000);
   const labelled = chunks.filter((chunk) => chunk.label !== null).pop();
-  return { from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString(), project: defaultProject(labelled), label: "", active: true };
+  return { from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString(), project: defaultProject(labelled), label: "", active: true, addOns: [] };
 }
 
 function pendingText(state: LabelState): string {
